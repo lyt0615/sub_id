@@ -1,0 +1,9 @@
+# ignore __pycache__ directory
+__pycache__/
+**/__pycache__/
+datasets/
+logs/
+checkpoints/
+# ignore temporary files
+tmp.*
+
