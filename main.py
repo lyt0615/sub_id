@@ -38,8 +38,6 @@ def get_args_parser():
     parser.add_argument('--seed',
                         default=2024,
                         help="Random seed")
-    parser.add_argument('--n_mlp', default=4,
-                        help="Number of MLP")
     # params of PACE
     parser.add_argument('--dim',
                         help="dim of net")
@@ -51,6 +49,10 @@ def get_args_parser():
                         help="patch size of net")
     parser.add_argument('--pool_dim',
                         help="pool dim of net")
+    parser.add_argument('--n_conv',
+                        help="Number of convolution layers in CNN_exp")
+    parser.add_argument('--n_fc',
+                        help="Number of fc layers in CNN_exp")
 
     # params of strategy
     parser.add_argument('--train_size',
@@ -67,6 +69,9 @@ def get_args_parser():
 
 if __name__ == "__main__":
 
+    # for f in config.FC:
+    #     for c in config.CONVS:
+    # n_conv, n_fc = c, f
     args = get_args_parser()
 
     if args.train and args.ds == 'Bacteria':
@@ -77,11 +82,16 @@ if __name__ == "__main__":
         args.batch_size = '8'
 
     seed_everything(int(args.seed))
-    ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime())
     
-    if args.n_mlp:
-        n_mlp = int(args.n_mlp)
-
+    if args.n_fc:
+        n_fc = int(args.n_fc)
+    if args.n_conv:
+        n_conv = int(args.n_conv)
+    if args.net == 'CNN_exp':
+        ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_{n_conv}_{n_fc}'
+    else:
+        ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime())
+        
     ds = args.ds
     net_ = args.net
     device = args.device
@@ -148,6 +158,7 @@ if __name__ == "__main__":
     if args.train_size:
         params['strategy']['train_size'] = float(args.train_size)
 
+
     if net_ == 'VanillaTransformer':
         from models.VanillaTransformer import VanillaTransformerEncoder
         net = VanillaTransformerEncoder(vocab_size=n_classes).to(device)    
@@ -212,7 +223,7 @@ if __name__ == "__main__":
 
     elif net_ == 'CNN_MLP':
         from models.CNN_MLP import CNN
-        net = CNN(class_num=n_classes, n_fclayers=n_mlp).to(device)
+        net = CNN(class_num=n_classes, n_fclayers=n_fc).to(device)
 
     elif net_ == 'CNN_MLPMixer':
         from models.CNN_MLPMixer import CNN
@@ -227,14 +238,21 @@ if __name__ == "__main__":
         net = resunit(1,n_classes,20,6).to(device)
 
     elif net_ == 'CNN_exp':
-        from models.CNN_exp import CNN_exp, get_fc_param
-        conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-                        {'conv_cin': 32, 'conv_cout': 64, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-                        {'conv_cin': 64, 'conv_cout': 128, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 0, 'mp_ksize': 2, 'mp_stride': 2,},
-                        {'conv_cin': 128, 'conv_cout': 256, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 0, 'mp_ksize': 2, 'mp_stride': 2,},
-                        ]
-
-        fc_param = get_fc_param([args.batch_size, 1024], conv_param, 4)
+        from models.CNN_exp import CNN_exp, get_fc_param 
+        if n_conv == 1:
+            conv_param = [{'conv_cin': 1, 'conv_cout': 256, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}]
+        else:
+            conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}]
+            series = [int(32 * ((256 / 32) ** (1 / (n_conv - 1))) ** i) for i in range(n_conv)]
+            for i in range(1, n_conv):
+                conv_param.append({'conv_cin': series[i-1], 'conv_cout': series[i], 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,})
+        
+        # conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
+        #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
+        #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
+        #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}
+        #               ]
+        fc_param = get_fc_param([args.batch_size, 1024], conv_param, n_fc)
         net = CNN_exp(conv_param, fc_param, class_num=n_classes).to(device)
         logging.info(conv_param, fc_param)
     logging.info(net)
@@ -260,7 +278,7 @@ if __name__ == "__main__":
             test_model_path = args.test_checkpoint
             print(test_model_path)
             net = load_net_state(net, torch.load(test_model_path,
-                                                 map_location={'cuda:0': device, 'cuda:1': device}))
+                                                map_location={'cuda:0': device, 'cuda:1': device}))
             test_model(net, device=device, ds=args.ds)
 
     except Exception as e:

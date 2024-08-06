@@ -118,7 +118,7 @@ class Engine:
 
         accuracies = AverageMeter()
         losses = AverageMeter()
-        flag = False
+        flag = True
         self.model.eval()
         bar = tqdm(self.val_loader)
         with torch.no_grad():
@@ -218,12 +218,13 @@ def load_net_state(net, state_dict):
 
 def train_model(model, save_path, ds, device='cpu', tune=False,  **kwargs):
     from torch.optim.lr_scheduler import CosineAnnealingLR
-
+    from torch.utils.tensorboard import SummaryWriter
+    writer = SummaryWriter(log_dir = save_path)
     pool_dim = 256 if model.__class__.__name__ == 'Pace' else 1024
 
     train_loader, val_loader = make_trainloader(
         ds, batch_size=kwargs['batch_size'],
-        num_workers=12, train_size=kwargs['train_size'],
+        num_workers=1, train_size=kwargs['train_size'],
         seed=42, tune=tune, pool_dim=pool_dim)
 
     test_loader = make_testloader(ds, pool_dim=pool_dim)
@@ -256,6 +257,11 @@ def train_model(model, save_path, ds, device='cpu', tune=False,  **kwargs):
             es(val_loss, model, f'{save_path}.pth')
         if es.early_stop:
             break
+        writer.add_scalar("Loss/train", train_loss, epoch)
+        writer.add_scalar("Loss/val", val_loss, epoch)
+        writer.add_scalar("Accuracy/val", acc, epoch)
+        writer.add_scalar("Loss/test", test_loss, epoch)
+        writer.add_scalar("Accuracy/test", test_acc, epoch)
     print(es.val_score)
 
 
@@ -273,5 +279,4 @@ def test_model(model, ds, device='cpu', verbose=True):
         print(metrics.classification_report(true, pred, digits=4))
         logging.info(metrics.classification_report(true, pred, digits=4))
         logging.info(f'accuracy:{metrics.accuracy_score(true, pred):.5f}')
-
     return outputs, pred, true

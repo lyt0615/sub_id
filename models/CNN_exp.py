@@ -42,33 +42,74 @@ class CNN_exp(nn.Module):
     
 def create_mlp_block(input_dim, output_dim, num_layers):
     layers = []
-    current_dim = input_dim
-    interval = (input_dim - output_dim) // num_layers
+    print(input_dim)
+    # current_dim = input_dim
+    # interval = (input_dim - output_dim) // num_layers
     
+    # for i in range(num_layers):
+        # if i != num_layers-1:
+        #     if input_dim - (i+1) * interval <= output_dim:
+        #         next_output_dim = current_dim
+        #     else:
+        #         next_output_dim = input_dim - (i+1) * interval
+        #     layers.append(nn.Linear(current_dim, next_output_dim))
+        #     layers.append(nn.ReLU())
+        #     current_dim = next_output_dim
+        # else: 
+        #     next_output_dim = output_dim
+        #     layers.append(nn.Linear(current_dim, next_output_dim))
     for i in range(num_layers):
-        if i != num_layers-1:
-            next_output_dim = input_dim - (i+1) * interval
-            layers.append(nn.Linear(current_dim, next_output_dim))
+        if i == 0:
+            layers.append(nn.Linear(input_dim, output_dim))
             layers.append(nn.ReLU())
-            current_dim = next_output_dim
-        else: 
-            next_output_dim = output_dim
-            layers.append(nn.Linear(current_dim, next_output_dim))
+        elif i != num_layers-1:
+            layers.append(nn.Linear(output_dim, output_dim))
+            layers.append(nn.ReLU())
+        else:
+            layers.append(nn.Linear(output_dim, output_dim))
     return nn.Sequential(*layers)
 
+def getModelSize(model):
+    param_size = 0
+    param_sum = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+        param_sum += param.nelement()
+    buffer_size = 0
+    buffer_sum = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+        buffer_sum += buffer.nelement()
+    all_size = (param_size + buffer_size) / 1024 / 1024
+    return all_size
+
 if __name__ == '__main__':
-
-    conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 5, 'conv_stride': 2, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-                    {'conv_cin': 32, 'conv_cout': 64, 'conv_ksize': 5, 'conv_stride': 2, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-                    {'conv_cin': 64, 'conv_cout': 128, 'conv_ksize': 5, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-                    {'conv_cin': 128, 'conv_cout': 256, 'conv_ksize': 5, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-                    # {'conv_cin': 256, 'conv_cout': 512, 'conv_ksize': 5, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-                    ]
-    # fc_param = [{'input_dim': 1, 'num_layers': 4,}]
-
-    input_size = [1, 1024]
-    fc_param = get_fc_param(input_size, conv_param, 4)
-    model = CNN_exp(conv_param, fc_param)
-    output = model(torch.randn(1, 1024))
-    print(output.shape)
-    print(model)
+    from thop import profile
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    n_conv = 1
+    n_fc = 2
+    size = {}
+    for n_conv in range(3,8):
+        for n_fc in range(1,5):
+            if n_conv == 1:
+                conv_param = [{'conv_cin': 1, 'conv_cout': 256, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}]
+            else:
+                conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}]
+                series = [int(32 * ((256 / 32) ** (1 / (n_conv - 1))) ** i) for i in range(n_conv)]
+                for i in range(1, n_conv):
+                    conv_param.append({'conv_cin': series[i-1], 'conv_cout': series[i], 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,})
+            
+            # conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
+            #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
+            #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
+            #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}
+            #               ]
+            fc_param = get_fc_param([1, 1024], conv_param, n_fc)
+            net = CNN_exp(conv_param, fc_param, class_num=957).cuda()
+            flops, params = profile(net, inputs=(torch.randn(1,1,1024).cuda(), ))
+            
+            print('FLOPs = ' + str(flops/1000**3) + 'G')
+            print('Params = ' + str(params/1000**2) + 'M')
+            size[f'{n_conv}+{n_fc}'] = getModelSize(net)
+    
+    print(size)

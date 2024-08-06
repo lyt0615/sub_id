@@ -32,7 +32,7 @@ class myDataset(Dataset):
         return X, y
 
 
-def make_trainloader(ds, batch_size=16, num_workers=12, train_size=0.8, seed=42, tune=False, pool_dim=None):
+def make_trainloader(ds, batch_size=16, num_workers=1, train_size=0.8, seed=42, tune=False, pool_dim=None):
 
     if tune:
         data_x = np.load(f'datasets/{ds}/tune_x.npy')
@@ -76,7 +76,7 @@ def make_trainloader(ds, batch_size=16, num_workers=12, train_size=0.8, seed=42,
     return trainloader, valloader
 
 
-def make_testloader(ds, batch_size=128, num_workers=12, pool_dim=256):
+def make_testloader(ds, batch_size=128, num_workers=1, pool_dim=256):
     data_x = np.load(f'datasets/{ds}/test_x.npy')
     data_y = np.load(f'datasets/{ds}/test_y.npy')
 

@@ -25,3 +25,6 @@ STRATEGY = {
         "Adam_params": {"lr": 1e-5},
     }
 }
+
+CONVS = range(3, 8)
+FC = range(5, 6)
