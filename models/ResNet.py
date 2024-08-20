@@ -38,7 +38,7 @@ class ResidualBlock(nn.Module):
 
 class ResNet(nn.Module):
     def __init__(self, hidden_sizes, num_blocks, input_dim=256,
-                 in_channels=64, n_classes=30):
+                 in_channels=64, n_classes=957, fc_num_layers=0, fc_dim=1024, **kwargs):
         super(ResNet, self).__init__()
         assert len(num_blocks) == len(hidden_sizes)
         self.input_dim = input_dim
@@ -60,6 +60,22 @@ class ResNet(nn.Module):
         self.z_dim = self._get_encoding_size()
         self.linear = nn.Linear(self.z_dim, self.n_classes)
 
+        # fc layers 
+        self.fc_num_layers = fc_num_layers
+        self.fc_dim = fc_dim
+        if fc_num_layers:
+            self.fc = self._create_mlp_block(fc_init_dim=self.z_dim, fc_dim=fc_dim, fc_num_layers=fc_num_layers)
+            self.fc_head = nn.Linear(fc_dim, n_classes)
+
+    def _create_mlp_block(self, fc_init_dim, fc_dim, fc_num_layers):
+        layers = [nn.Flatten(), nn.Linear(fc_init_dim, fc_dim), nn.ReLU()]
+        
+        for _ in range(1, fc_num_layers):
+                layers.append(nn.Linear(fc_dim, fc_dim))
+                layers.append(nn.ReLU())
+                
+        return nn.Sequential(*layers)
+    
     def encode(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
         x = self.encoder(x)
@@ -68,7 +84,11 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         z = self.encode(x)
-        return self.linear(z)
+        if self.fc_num_layers:
+            z = self.fc_head(self.fc(z))
+        else: 
+            z = self.linear(z)
+        return z
 
     def _make_layer(self, out_channels, num_blocks, stride=1):
         strides = [stride] + [1] * (num_blocks - 1)
@@ -100,15 +120,28 @@ in_channels = 64
 n_classes = 30
 
 
-def resnet(n_classes):
+def resnet(**kwargs):
     return ResNet(hidden_sizes, num_blocks, input_dim=input_dim,
-                  in_channels=in_channels, n_classes=n_classes)
+                  in_channels=in_channels, **kwargs)
 
 
 
 if __name__ == "__main__":
     import time
-    net = resnet(n_classes=957)
+    params = {'conv_ksize':3, 
+              'conv_padding':1, 
+              'conv_init_dim':32, 
+              'conv_final_dim':256, 
+              'conv_num_layers':4, 
+              'mp_ksize':2, 
+              'mp_stride':2, 
+              'fc_dim':1024, 
+              'fc_num_layers':0, 
+              'mixer_num_layers':4,
+              'n_classes':957,
+              'use_mixer':True,
+              }
+    net = resnet(**params)
     inp = torch.randn(16, 1, 1024)
     print(net)
     start = time.time()

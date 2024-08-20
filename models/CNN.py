@@ -26,7 +26,7 @@ import torch.nn.functional as F
 4. 可视化MLP权重
 '''
 class CNN(nn.Module):
-    def __init__(self, class_num=37, init_weights=True):
+    def __init__(self, n_classes=37, init_weights=True):
 
         self.kernel_size = 3
 
@@ -42,7 +42,7 @@ class CNN(nn.Module):
         self.fc1 = nn.Linear(15872, 4800)  # 15360, 14848, 14336, 14080
         self.fc2 = nn.Linear(4800, 3200)
         self.fc3 = nn.Linear(3200, 1600)
-        self.fc4 = nn.Linear(1600, class_num)
+        self.fc4 = nn.Linear(1600, n_classes)
 
         self.bn1 = nn.BatchNorm1d(32)
         self.bn2 = nn.BatchNorm1d(64)

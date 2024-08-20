@@ -41,6 +41,7 @@ class Block(nn.Module):
 
         x = input + self.drop_path(x)
         return x
+    
 
 class ConvNeXt(nn.Module):
     r""" ConvNeXt
@@ -56,11 +57,11 @@ class ConvNeXt(nn.Module):
         head_init_scale (float): Init scaling value for classifier weights and biases. Default: 1.
     """
     def __init__(self, in_chans=1, n_classes=30, 
-                 depths=[1, 1, 3, 1], dims=[96, 192, 384, 768], drop_path_rate=0., 
-                 layer_scale_init_value=1e-6, head_init_scale=1.,
+                 depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], drop_path_rate=0., 
+                 layer_scale_init_value=1e-6, head_init_scale=1.,fc_dim=1024,fc_num_layers=0, **kwargs
                  ):
         super().__init__()
-
+        self.fc_num_layers = fc_num_layers
         self.downsample_layers = nn.ModuleList() # stem and 3 intermediate downsampling conv layers
         stem = nn.Sequential(
             nn.Conv1d(in_chans, dims[0], kernel_size=4, stride=4),
@@ -92,6 +93,29 @@ class ConvNeXt(nn.Module):
         self.head.weight.data.mul_(head_init_scale)
         self.head.bias.data.mul_(head_init_scale)
 
+        # fc layers 
+        if fc_num_layers:
+            feature = self._get_feature_size()
+            fc_init_dim = feature.shape[-1] * feature.shape[-2]
+            self.fc = self._create_mlp_block(fc_init_dim, fc_dim=fc_dim, fc_num_layers=fc_num_layers)
+            self.fc_head = nn.Linear(fc_dim, n_classes)
+            
+    def _get_feature_size(self):
+        self.device = next(self.parameters()).device
+        with torch.no_grad():
+            tmp = torch.randn(1, 1, 1024).to(self.device)
+            feature = self.forward_features(F.adaptive_avg_pool1d(tmp, 256))
+        return feature
+
+    def _create_mlp_block(self, fc_init_dim, fc_dim, fc_num_layers):
+        layers = [nn.Flatten(), nn.Linear(fc_init_dim, fc_dim), nn.ReLU()]
+        
+        for _ in range(1, fc_num_layers):
+                layers.append(nn.Linear(fc_dim, fc_dim))
+                layers.append(nn.ReLU())
+                
+        return nn.Sequential(*layers)
+
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv1d, nn.Linear)):
             trunc_normal_(m.weight, std=.02)
@@ -106,7 +130,10 @@ class ConvNeXt(nn.Module):
     def forward(self, x):
         x = F.adaptive_avg_pool1d(x, 256)
         x = self.forward_features(x)
-        x = self.head(x)
+        if self.fc_num_layers:
+            x = self.fc_head(self.fc(x))
+        else:
+            x = self.head(x)
         return x
 
 class LayerNorm(nn.Module):
@@ -137,11 +164,25 @@ class LayerNorm(nn.Module):
 
 @register_model
 def convnext_tiny(**kwargs):
-    model = ConvNeXt(depths=[3, 3, 9, 3], dims=[96, 192, 384, 768], **kwargs, n_classes=957)
+    model = ConvNeXt(**kwargs)
     return model
 
 if __name__ == "__main__":
-    net = convnext_tiny()
+    params = {
+        'conv_ksize':3, 
+              'conv_padding':1, 
+              'conv_init_dim':32, 
+              'conv_final_dim':256, 
+              'conv_num_layers':4, 
+              'mp_ksize':2, 
+              'mp_stride':2, 
+              'fc_dim':1024, 
+              'fc_num_layers':4, 
+              'mixer_num_layers':4,
+              'n_classes':957,
+              'use_mixer':True,
+              }
+    net = convnext_tiny(**params)
     inp = torch.randn((16, 1, 256))
     from time import time
     from thop import profile
@@ -152,4 +193,4 @@ if __name__ == "__main__":
     flops, params = profile(net, inputs=(inp, ))
     print('FLOPs = ' + str(flops/1000**3) + 'G')
     print('Params = ' + str(params/1000**2) + 'M')
-    print(out.shape)
+    print(net)

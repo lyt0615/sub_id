@@ -273,9 +273,11 @@ class Stem(nn.Module):
 
 
 class ConvMSANet(nn.Module):
-    def __init__(self, block1, block2, *, num_blocks, num_blocks2, heads, cblock=LNGAPBlock, window_size, sd=0.0, n_classes=10, stem=Stem, name, **block_kwargs):
+    def __init__(self, block1, block2, *, num_blocks, num_blocks2, heads, fc_num_layers=0, fc_dim=1024,
+                 cblock=LNGAPBlock, window_size, sd=0.0, n_classes=10, stem=Stem, name, **block_kwargs):
         super().__init__()
         self.name = name
+        self.fc_num_layers = fc_num_layers
         idxs = [[j for j in range(sum(num_blocks[:i]), sum(num_blocks[:i + 1]))] for i in range(len(num_blocks))]
         sds = [[sd * j / (sum(num_blocks) - 1) for j in js] for js in idxs]
 
@@ -292,7 +294,30 @@ class ConvMSANet(nn.Module):
         else:
             self.classifier.append(cblock(256 * block2.expansion, n_classes, **block_kwargs))
         self.classifier = nn.Sequential(*self.classifier)
+        
+        # fc layers 
+        if fc_num_layers:
+            feature = self._get_feature_size()
+            fc_init_dim = feature.shape[-1] * feature.shape[-2]
+            self.fc = self._create_mlp_block(fc_init_dim, fc_dim=fc_dim, fc_num_layers=fc_num_layers)
+            self.fc_head = nn.Linear(fc_dim, n_classes)
+            
+    def _get_feature_size(self):
+        self.device = next(self.parameters()).device
+        with torch.no_grad():
+            tmp = torch.randn(1, 1, 1024).to(self.device)
+            feature = self.layer4(self.layer3(self.layer2(self.layer1(self.layer0(F.interpolate(tmp, 1400))))))
+        return feature
 
+    def _create_mlp_block(self, fc_init_dim, fc_dim, fc_num_layers):
+        layers = [nn.Flatten(), nn.Linear(fc_init_dim, fc_dim), nn.ReLU()]
+        
+        for _ in range(1, fc_num_layers):
+                layers.append(nn.Linear(fc_dim, fc_dim))
+                layers.append(nn.ReLU())
+                
+        return nn.Sequential(*layers)
+    
     @staticmethod
     def _make_layer(block1, block2, in_channels, out_channels, num_block1, num_block2, stride, heads, window_size, sds, **block_kwargs):
         alt_seq = [False] * (num_block1 - num_block2 * 2) + [False, True] * num_block2
@@ -314,8 +339,10 @@ class ConvMSANet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        x = self.classifier(x)
-
+        if self.fc_num_layers:
+            x = self.fc_head(self.fc(x))
+        else:
+            x = self.classifier(x)
         return x
 
 
@@ -333,14 +360,27 @@ def convmsa_reflection(n_classes=40, stem=True, name='ConvMSANet_Reflection', **
 #                     n_classes=n_classes, name=name, **block_kwargs)    
 
 if __name__ == '__main__':
-    net = convmsa_reflection(n_classes=957, stem=True)
+    params = {'conv_ksize':3, 
+       'conv_padding':1, 
+       'conv_init_dim':32, 
+       'conv_final_dim':256, 
+       'conv_num_layers':4, 
+       'mp_ksize':2, 
+       'mp_stride':2, 
+       'fc_dim':1024, 
+       'fc_num_layers':4, 
+       'mixer_num_layers':4,
+       'n_classes':957,
+       'use_mixer':True
+       }
+    net = convmsa_reflection(**params)
     inp = torch.randn((16, 1, 1024))
     from time import time
     from thop import profile
     t1 = time()
     out = net(inp)
     t2=time()
-    print((t2-t1)/16*1000)
+    print(net, out.shape)
     flops, params = profile(net, inputs=(inp, ))
     print('FLOPs = ' + str(flops/1000**3) + 'G')
     print('Params = ' + str(params/1000**2) + 'M')

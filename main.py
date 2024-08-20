@@ -14,12 +14,12 @@ from utils.utils import seed_everything, load_net_state, train_model, test_model
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser('Patch-based Auto Encoder for Classification (PACE)', add_help=False)
+    parser = argparse.ArgumentParser('---', add_help=False)
 
     # basic params
-    parser.add_argument('--net', default='PACE',
+    parser.add_argument('--net', default='CNN_exp',
                         help="Choose network")
-    parser.add_argument('--ds', default='COV',
+    parser.add_argument('--ds', default='qm9s_raman',
                         help="Choose dataset")
     parser.add_argument('--device', default='cuda:0',
                         help="Choose GPU device")
@@ -30,6 +30,10 @@ def get_args_parser():
                         help="start tune")
     parser.add_argument('-test', '--test', action='store_true',
                         help="start test")
+    parser.add_argument('--debug', '-debug', action='store_true',
+                        default=1,
+                        help="start debug")
+
 
     parser.add_argument('--base_checkpoint',
                         help="Choose base model for fine-tune")
@@ -38,22 +42,17 @@ def get_args_parser():
     parser.add_argument('--seed',
                         default=2024,
                         help="Random seed")
-    # params of PACE
-    parser.add_argument('--dim',
-                        help="dim of net")
-    parser.add_argument('--depth',
-                        help="depth of net")
-    parser.add_argument('--kernel_size',
-                        help="kernel size of net")
-    parser.add_argument('--patch_size',
-                        help="patch size of net")
-    parser.add_argument('--pool_dim',
-                        help="pool dim of net")
-    parser.add_argument('--n_conv',
-                        help="Number of convolution layers in CNN_exp")
-    parser.add_argument('--n_fc',
-                        help="Number of fc layers in CNN_exp")
 
+    # params of CNN_exp
+    parser.add_argument('--n_conv', 
+                        help="Number of convolution layers in CNN_exp")
+    parser.add_argument('--n_fc', 
+                        help="Number of fc layers in CNN_exp")
+    parser.add_argument('--n_mixer', 
+                        help="Number of MLPMixer1D")   
+    parser.add_argument('--use_mixer', default=False,
+                        help="Use MLPMixer1D or not")  
+    
     # params of strategy
     parser.add_argument('--train_size',
                         help="train size for train_val_split")
@@ -66,12 +65,24 @@ def get_args_parser():
     args = parser.parse_args()
     return args
 
+def catch_exception():
+    import traceback
+    import shutil
+
+    traceback.print_exc()
+    
+    if os.path.exists(f'logs/{ds}/{net_}/{ts}_{mode}.log'):
+        os.remove(f'logs/{ds}/{net_}/{ts}_{mode}.log') 
+        print('unexpected log has been deleted')
+    if os.path.exists(f'checkpoints/{ds}/{net_}/{ts}'):
+        shutil.rmtree(f'checkpoints/{ds}/{net_}/{ts}')
+        print('unexpected tensorboard record has been deleted')
 
 if __name__ == "__main__":
 
     # for f in config.FC:
     #     for c in config.CONVS:
-    # n_conv, n_fc = c, f
+    #         n_conv, n_fc = c, f
     args = get_args_parser()
 
     if args.train and args.ds == 'Bacteria':
@@ -83,15 +94,45 @@ if __name__ == "__main__":
 
     seed_everything(int(args.seed))
     
-    if args.n_fc:
-        n_fc = int(args.n_fc)
+    params = {'net': config.NET, 'strategy': config.STRATEGY['train'] if args.train or args.debug else config.STRATEGY['tune']}
+    params['net']['use_mixer'] = eval(args.use_mixer) if type(args.use_mixer) == str else args.use_mixer
+
     if args.n_conv:
-        n_conv = int(args.n_conv)
+        params['net']['conv_num_layers'] = int(args.n_conv)
+    if args.n_fc:
+        params['net']['fc_num_layers'] = int(args.n_fc)
+    if args.n_mixer:
+        params['net']['mixer_num_layers'] = int(args.n_mixer)
+        
+
+    if args.batch_size:
+        params['strategy']['batch_size'] = int(args.batch_size)
+    if args.epoch:
+        params['strategy']['epoch'] = int(args.epoch)
+    if args.lr:
+        params['strategy']['Adam_params']["lr"] = float(args.lr)
+    if args.train_size:
+        params['strategy']['train_size'] = float(args.train_size)
+
     if args.net == 'CNN_exp':
-        ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_{n_conv}_{n_fc}'
+        n_conv = params['net']['conv_num_layers']
+        
+        if args.use_mixer:
+            n_mixer = params['net']['mixer_num_layers']
+            ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_conv{n_conv}mixer{n_mixer}'
+        else:
+            n_fc = params['net']['fc_num_layers']
+            ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_conv{n_conv}fc{n_fc}'
+        
+        # assert n_fc is None and args.use_mixer is None, 'Only one block should be used: either MLP or MLPMixer.'
+            
+    elif args.net == 'ResPeak_MLPMixer1D' or args.net == 'CNN_MLPMixer1D':
+        if args.use_mixer:
+            ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_{int(args.n_mixer)}'
+    
     else:
         ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime())
-        
+
     ds = args.ds
     net_ = args.net
     device = args.device
@@ -103,7 +144,7 @@ if __name__ == "__main__":
     if not os.path.exists(f'logs/{ds}/{net_}'):
         os.mkdir(f'logs/{ds}/{net_}')
 
-    if args.train:
+    if args.train or args.debug:
         mode = "train"
     elif args.tune:
         mode = "tune"
@@ -130,43 +171,19 @@ if __name__ == "__main__":
         if not os.path.exists(f"checkpoints/{ds}/{net_}/{ts}"):
             os.mkdir(f"checkpoints/{ds}/{net_}/{ts}")
 
-    if args.ds == 'nist_ir':
+    if args.ds == 'nist_ir' or args.ds == 'fcgformer_ir':
         n_classes = 17
-    elif args.ds == 'qm9s_raman' or args.ds == 'qm9s_ir':
+    elif 'qm9s' in args.ds:
         n_classes = 957
     else:
         n_classes = len(json.load(open(os.path.join(data_root, 'label.json'))))
 
-    params = {'net': config.NET, 'strategy': config.STRATEGY['train'] if args.train else config.STRATEGY['tune']}
-
-    if args.dim:
-        params['net']['dim'] = int(args.dim)
-    if args.depth:
-        params['net']['depth'] = int(args.depth)
-    if args.kernel_size:
-        params['net']['kernel_size'] = int(args.kernel_size)
-    if args.patch_size:
-        params['net']['patch_size'] = int(args.patch_size)
-    if args.pool_dim:
-        params['net']['pool_dim'] = int(args.pool_dim)
-    if args.batch_size:
-        params['strategy']['batch_size'] = int(args.batch_size)
-    if args.epoch:
-        params['strategy']['epoch'] = int(args.epoch)
-    if args.lr:
-        params['strategy']['Adam_params']["lr"] = float(args.lr)
-    if args.train_size:
-        params['strategy']['train_size'] = float(args.train_size)
-
 
     if net_ == 'VanillaTransformer':
         from models.VanillaTransformer import VanillaTransformerEncoder
-        net = VanillaTransformerEncoder(vocab_size=n_classes).to(device)    
+        net = VanillaTransformerEncoder(**params['net']).to(device)    
     elif net_ == 'ResNet':
         from models.ResNet import resnet
-        net = resnet(n_classes=n_classes).to(device)
-    elif net_ == 'ResNet_MLP':
-        from models.ResNet_MLP import resnet
         net = resnet(n_classes=n_classes).to(device)
     elif net_ == 'LSTM':
         from models.LSTM import LSTM
@@ -181,7 +198,7 @@ if __name__ == "__main__":
 
     elif net_ == 'ConvMSANet':
         from models.ConvMSANet import convmsa_reflection
-        net = convmsa_reflection(n_classes=n_classes, stem=True).to(device)
+        net = convmsa_reflection(stem=True, **params['net']).to(device)
 
     elif net_ == 'PACE':
         from models.PACE import Pace
@@ -189,10 +206,7 @@ if __name__ == "__main__":
 
     elif net_ == 'ConvNext':
         from models.ConvNext import ConvNeXt
-        net = ConvNeXt(n_classes=n_classes).to(device)
-    elif net_ == 'ConvNext_MLP':
-        from models.ConvNext_MLP import ConvNeXt
-        net = ConvNeXt(n_classes=n_classes).to(device)
+        net = ConvNeXt(**params['net']).to(device)
 
     elif net_ == 'Xception':
         from models.Xception import xception
@@ -206,61 +220,21 @@ if __name__ == "__main__":
         from models.CNN import CNN
         net = CNN(n_classes).to(device)
 
-    elif net_ == 'CNN_1':
-        from models.CNN_1 import CNN
-        net = CNN(n_classes).to(device)
-
-    elif net_ == 'Vtrans_MLP':
-        from models.Vtrans_MLP import VanillaTransformerEncoder
-        net = VanillaTransformerEncoder(vocab_size=n_classes).to(device)
-
     elif net_ == 'ResPeak':
         from models.ResPeak import resunit
-        net = resunit(1,n_classes,20,6).to(device)
-    elif net_ == 'ResPeak_MLP':
-        from models.ResPeak_MLP import resunit
-        net = resunit(1,n_classes,20,6).to(device)
-
-    elif net_ == 'CNN_MLP':
-        from models.CNN_MLP import CNN
-        net = CNN(class_num=n_classes, n_fclayers=n_fc).to(device)
-
-    elif net_ == 'CNN_MLPMixer':
-        from models.CNN_MLPMixer import CNN
-        net = CNN(class_num=n_classes).to(device)
-
-    elif net_ == 'CNN_MLPMixer1D':
-        from models.CNN_MLPMixer1D import CNN
-        net = CNN(class_num=n_classes).to(device)
-
-    elif net_ == 'ResPeak_MLPMixer1D':
-        from models.ResPeak_MLPMixer1D import resunit
-        net = resunit(1,n_classes,20,6).to(device)
+        net = resunit(**params['net']).to(device)
+        print(net)
 
     elif net_ == 'CNN_exp':
-        from models.CNN_exp import CNN_exp, get_fc_param 
-        if n_conv == 1:
-            conv_param = [{'conv_cin': 1, 'conv_cout': 256, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}]
-        else:
-            conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}]
-            series = [int(32 * ((256 / 32) ** (1 / (n_conv - 1))) ** i) for i in range(n_conv)]
-            for i in range(1, n_conv):
-                conv_param.append({'conv_cin': series[i-1], 'conv_cout': series[i], 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,})
-        
-        # conv_param = [{'conv_cin': 1, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-        #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-        #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,},
-        #               {'conv_cin': 32, 'conv_cout': 32, 'conv_ksize': 3, 'conv_stride': 1, 'conv_padding': 1, 'mp_ksize': 2, 'mp_stride': 2,}
-        #               ]
-        fc_param = get_fc_param([args.batch_size, 1024], conv_param, n_fc)
-        net = CNN_exp(conv_param, fc_param, class_num=n_classes).to(device)
-        logging.info(conv_param, fc_param)
+        from models.CNN_exp import CNN_exp
+        net = CNN_exp(**params['net']).to(device)
+
     logging.info(net)
 
     # ================================3. start to train/tune/test ======================================
     try:
 
-        if args.train:
+        if args.train or args.debug:
             train_model(net, save_path, ds=args.ds, device=device, **params['strategy'])
 
         elif args.tune:
@@ -287,3 +261,6 @@ if __name__ == "__main__":
         traceback.print_exc()
         print(e)
         os.remove(f'logs/{ds}/{net_}/{ts}_{mode}.log')
+
+
+

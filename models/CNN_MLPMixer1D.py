@@ -70,10 +70,10 @@ def MLPMixer1D(*, sequence_length, channels, patch_size, dim, depth, num_classes
     )
 
 class CNN(nn.Module):
-    def __init__(self, class_num=37, init_weights=True):
+    def __init__(self, n_classes=37, dpth_mixer=8, init_weights=True):
 
         self.kernel_size = 3
-
+        self.depth_mixer=dpth_mixer
         super(CNN, self).__init__()
         # Define the convolutional layers
         self.conv1 = nn.Conv1d(in_channels=1, out_channels=32, kernel_size=self.kernel_size, stride=1, padding=1)
@@ -86,7 +86,7 @@ class CNN(nn.Module):
         self.fc1 = nn.Linear(15872, 4800)  # 15360, 14848, 14336, 14080
         self.fc2 = nn.Linear(4800, 3200)
         self.fc3 = nn.Linear(3200, 1600)
-        self.fc4 = nn.Linear(1600, class_num)
+        self.fc4 = nn.Linear(1600, n_classes)
 
         self.bn1 = nn.BatchNorm1d(32)
         self.bn2 = nn.BatchNorm1d(64)
@@ -106,8 +106,8 @@ class CNN(nn.Module):
             channels=256,
             patch_size=2,
             dim=512,
-            depth=4,
-            num_classes=class_num,
+            depth=self.depth_mixer,
+            num_classes=n_classes,
             expansion_factor=4,
             dropout=0.1
     )

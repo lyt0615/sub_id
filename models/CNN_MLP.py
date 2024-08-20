@@ -43,7 +43,7 @@ def create_mlp_block(input_dim, output_dim, num_layers):
     return nn.Sequential(*layers)
 
 class CNN(nn.Module):
-    def __init__(self, class_num=37, n_fclayers=4, init_weights=True):
+    def __init__(self, n_classes=37, n_fclayers=4, init_weights=True):
 
         self.kernel_size = 3
 
@@ -56,7 +56,7 @@ class CNN(nn.Module):
 
         # Define the fully connected layers
         # self.fc1 = nn.Linear(15*1024, 4800)
-        self.fc = create_mlp_block(input_dim=15872, output_dim=class_num, num_layers=n_fclayers)
+        self.fc = create_mlp_block(input_dim=15872, output_dim=n_classes, num_layers=n_fclayers)
 
         self.bn1 = nn.BatchNorm1d(32)
         self.bn2 = nn.BatchNorm1d(64)
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     from thop import profile
     from time import time
     input = torch.randn(16,1,1024)
-    net = CNN(n_fclayers=6, class_num=957)
+    net = CNN(n_fclayers=6, n_classes=957)
     t1 = time()
     output = net(input)
     t2=time()

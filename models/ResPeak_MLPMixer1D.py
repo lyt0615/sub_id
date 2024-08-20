@@ -103,7 +103,7 @@ def MLPMixer1D(*, sequence_length, channels, patch_size, dim, depth, num_classes
     )
 
 class resunit(nn.Module):
-    def __init__(self,data_channel,classes,a,layer):
+    def __init__(self,data_channel,classes,a,layer,depth_mixer=8):
         super(resunit, self).__init__()
         self.layer = layer
         self.inplane = 8 * a       #卷积核数目
@@ -115,7 +115,7 @@ class resunit(nn.Module):
             channels=160,
             patch_size=2,
             dim=512,
-            depth=8,
+            depth=depth_mixer,
             num_classes=classes,
             expansion_factor=4,
             dropout=0.1

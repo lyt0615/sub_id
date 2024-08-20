@@ -59,8 +59,11 @@ class ResNet(nn.Module):
 
         self.z_dim = self._get_encoding_size()
         self.linear = nn.Sequential(nn.Linear(self.z_dim, 4800),
+                nn.ReLU(),
                 nn.Linear(4800, 3200),
+                nn.ReLU(),
                 nn.Linear(3200, 1600),
+                nn.ReLU(),
                 nn.Linear(1600, n_classes),)
 
     def encode(self, x):

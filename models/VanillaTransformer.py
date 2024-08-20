@@ -11,8 +11,8 @@
 import sys
 sys.path.append('/data/YantiLiu/projects/substructure-ID/datasets')
 
-from models.modules import clones, LayerNorm, EncoderLayer, MultiHeadedAttention, PositionwiseFeedForward, LearnablePositionalEncoding, LearnableClassEmbedding
-from models.base import register_model
+from modules import clones, LayerNorm, EncoderLayer, MultiHeadedAttention, PositionwiseFeedForward, LearnablePositionalEncoding, LearnableClassEmbedding
+from base import register_model
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -117,7 +117,7 @@ class FPGrowingModule(nn.Module):
 class VanillaTransformerEncoder(nn.Module):
     "Core encoder is a stack of N layers"
 
-    def __init__(self, nlayer=6, d_model=512, d_ff=2048, nhead=8, dropout=0.1, vocab_size=1000, distillation=False):
+    def __init__(self, nlayer=6, d_model=512, d_ff=2048, nhead=8, dropout=0.1, n_classes=957, distillation=False, fc_num_layers=0, fc_dim=1024, **kwargs):
         super().__init__()
 
         self_attn = MultiHeadedAttention(nhead, d_model, dropout)
@@ -134,7 +134,40 @@ class VanillaTransformerEncoder(nn.Module):
 
         self.layers = clones(layer, nlayer)
         self.norm = LayerNorm(d_model)
-        self.proj = nn.Linear(d_model, vocab_size)
+        self.proj = nn.Linear(d_model, n_classes)
+
+        # fc layers 
+        self.fc_num_layers = fc_num_layers
+        self.fc_dim = fc_dim
+        if fc_num_layers:
+            feature = self._get_feature_size()
+            fc_init_dim = feature.shape[-1] * feature.shape[-2]
+            self.fc = self._create_mlp_block(fc_init_dim, fc_dim=fc_dim, fc_num_layers=fc_num_layers)
+            self.fc_head = nn.Linear(fc_dim, n_classes)
+            
+    def _get_feature_size(self):
+        self.device = next(self.parameters()).device
+        with torch.no_grad():
+            tmp = torch.randn(1, 1, 1024).to(self.device)
+            tmp = self.spectral_encoding(tmp)
+            tmp = self.positional_encoding(tmp)
+            tmp = self.class_encoding(tmp)
+
+            for layer in self.layers:
+                tmp = layer(tmp, None)
+            tmp = self.norm(tmp)
+            feature = tmp[:, 0]
+        return feature
+
+    def _create_mlp_block(self, fc_init_dim, fc_dim, fc_num_layers):
+        layers = [nn.Flatten(), nn.Linear(fc_init_dim, fc_dim), nn.ReLU()]
+        
+        for _ in range(1, fc_num_layers):
+                layers.append(nn.Linear(fc_dim, fc_dim))
+                layers.append(nn.ReLU())
+                
+        return nn.Sequential(*layers)
+    
 
     def forward(self, x, mask=None):
         x = self.spectral_encoding(x)
@@ -146,8 +179,11 @@ class VanillaTransformerEncoder(nn.Module):
         x = self.norm(x)
 
         cls_token = x[:, 0]
-        cls_out = self.proj(cls_token)
 
+        if self.fc_num_layers:
+            cls_out = self.fc_head(self.fc(cls_token))
+        else:
+            cls_out = self.proj(cls_token)
         if self.distillation:
             dist_token = x[:, -1]
             dist_out = self.proj(dist_token)
@@ -157,16 +193,28 @@ class VanillaTransformerEncoder(nn.Module):
 
 
 if __name__ == "__main__":
-
+    params = {'conv_ksize':3, 
+              'conv_padding':1, 
+              'conv_init_dim':32, 
+              'conv_final_dim':256, 
+              'conv_num_layers':4, 
+              'mp_ksize':2, 
+              'mp_stride':2, 
+              'fc_dim':1024, 
+              'fc_num_layers':0, 
+              'mixer_num_layers':4,
+              'n_classes':957,
+              'use_mixer':True,
+              }
     x = torch.rand(16, 1, 1024)
-    model = VanillaTransformerEncoder(distillation=False)
+    model = VanillaTransformerEncoder(**params)
     y = model(x)
     if type(y) == tuple:
         cls_y, dist_y = y
         print(cls_y.shape, dist_y.shape)
     else:
         print(y.shape)
-
+    print(model)
     # net = FPGrowingModule()
     # print(net)
     # print(net(x).shape)
