@@ -116,7 +116,6 @@ if __name__ == "__main__":
 
     if args.net == 'CNN_exp':
         n_conv = params['net']['conv_num_layers']
-        
         if args.use_mixer:
             n_mixer = params['net']['mixer_num_layers']
             ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_conv{n_conv}mixer{n_mixer}'
