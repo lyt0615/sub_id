@@ -184,7 +184,7 @@ if __name__ == "__main__":
         net = VanillaTransformerEncoder(**params['net']).to(device)    
     elif net_ == 'ResNet':
         from models.ResNet import resnet
-        net = resnet(n_classes=n_classes).to(device)
+        net = resnet(**params['net']).to(device)
     elif net_ == 'LSTM':
         from models.LSTM import LSTM
         net = LSTM(n_classes=n_classes).to(device)
