@@ -30,8 +30,7 @@ def get_args_parser():
                         help="start tune")
     parser.add_argument('-test', '--test', action='store_true',
                         help="start test")
-    parser.add_argument('--debug', '-debug', action='store_true',
-                        default=1,
+    parser.add_argument('-debug', '--debug', action='store_true',
                         help="start debug")
 
 
@@ -231,6 +230,7 @@ if __name__ == "__main__":
     logging.info(net)
 
     # ================================3. start to train/tune/test ======================================
+    print(mode)
     try:
 
         if args.train or args.debug:
@@ -247,7 +247,7 @@ if __name__ == "__main__":
 
         elif args.test:
             import torch
-
+            
             test_model_path = args.test_checkpoint
             print(test_model_path)
             net = load_net_state(net, torch.load(test_model_path,
