@@ -213,3 +213,13 @@ if __name__ == "__main__":
     flops, params = profile(net, inputs=(input, ))
     print('FLOPs = ' + str(flops/1000**3) + 'G')
     print('Params = ' + str(params/1000**2) + 'M')
+
+'''from einops.layers.torch import Rearrange, Reduce
+import torch
+f = Rearrange('b c (l p) -> b l (p c)', p = 1)
+arr = torch.tensor([[[1,11,21,31,41,51],
+                    [2,12,22,32,42,52,],
+                    [3,13,23,33,43,53,],]])
+arr1 = f(arr)
+arr1
+'''
