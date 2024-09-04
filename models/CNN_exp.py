@@ -23,6 +23,7 @@ class MLPMixer1D(nn.Module):
 
         for _ in range(num_layers):
             token_mixer = nn.Sequential(
+                nn.LayerNorm(token_dims),
                 nn.Linear(token_dims, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -31,6 +32,7 @@ class MLPMixer1D(nn.Module):
                 )
             
             channel_mixer = nn.Sequential(
+                nn.LayerNorm(num_tokens),
                 nn.Linear(num_tokens, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -49,14 +51,14 @@ class MLPMixer1D(nn.Module):
         for i in range(self.num_layers):
             x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
             id1 = x 
-            x = self.token_mixers[i](x)
             x = self.token_norm(x)
+            x = self.token_mixers[i](x)
             x += id1
             
             x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
             id2 = x
-            x = self.channel_mixers[i](x)
             x = self.channel_norm(x)
+            x = self.channel_mixers[i](x)
             x += id2 # b, token_dim, num_tokens == b, channels, length
         
         x = self.channel_norm(x)
@@ -116,7 +118,7 @@ class CNN_exp(nn.Module):
         # fc layers 
         else:
             self.fc = self._create_mlp_block(fc_init_dim, fc_dim=fc_dim, fc_num_layers=fc_num_layers)
-            self.head = nn.Linear(fc_dim, n_classes)
+            self.head = nn.Linear(fc_dim, n_classes) if fc_num_layers else nn.Linear(fc_init_dim, n_classes)
             
     def _get_feature_size(self):
         self.device = next(self.parameters()).device
@@ -140,11 +142,14 @@ class CNN_exp(nn.Module):
         return inp_channels, out_channels
 
     def _create_mlp_block(self, fc_init_dim, fc_dim, fc_num_layers):
-        layers = [nn.Flatten(), nn.Linear(fc_init_dim, fc_dim), nn.ReLU()]
-        
-        for _ in range(1, fc_num_layers):
-                layers.append(nn.Linear(fc_dim, fc_dim))
-                layers.append(nn.ReLU())
+        if fc_num_layers>=1:
+            layers = [nn.Flatten(), nn.Linear(fc_init_dim, fc_dim), nn.ReLU()]
+            
+            for _ in range(1, fc_num_layers):
+                    layers.append(nn.Linear(fc_dim, fc_dim))
+                    layers.append(nn.ReLU())
+        if fc_num_layers == 0:
+            layers = [nn.Flatten()]
                 
         return nn.Sequential(*layers)
 
@@ -175,14 +180,14 @@ if __name__ == '__main__':
               'conv_padding':1, 
               'conv_init_dim':32, 
               'conv_final_dim':256, 
-              'conv_num_layers':4, 
+              'conv_num_layers':3, 
               'mp_ksize':2, 
               'mp_stride':2, 
               'fc_dim':1024, 
-              'fc_num_layers':4, 
+              'fc_num_layers':0, 
               'mixer_num_layers':4,
               'n_classes':957,
-              'use_mixer':True,
+              'use_mixer':0,
               }
     net = CNN_exp(**params).to(device)
     # print(net)
