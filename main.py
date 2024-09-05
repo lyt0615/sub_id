@@ -179,7 +179,10 @@ if __name__ == "__main__":
 
     if net_ == 'VanillaTransformer':
         from models.VanillaTransformer import VanillaTransformerEncoder
-        net = VanillaTransformerEncoder(**params['net']).to(device)    
+        net = VanillaTransformerEncoder(**params['net']).to(device)   
+    if net_ == 'CNN_MLPMixer1D':
+        from models.CNN_MLPMixer1D import CNN
+        net = CNN(957, 8).to(device)   
     elif net_ == 'ResNet':
         from models.ResNet import resnet
         net = resnet(**params['net']).to(device)
@@ -230,7 +233,6 @@ if __name__ == "__main__":
     logging.info(net)
 
     # ================================3. start to train/tune/test ======================================
-    print(mode)
     try:
 
         if args.train or args.debug:
