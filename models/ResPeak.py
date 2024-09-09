@@ -12,17 +12,17 @@ class MLPMixer1D(nn.Module):
                  num_layers, 
                  hidden_dims=1024,
                  dropout=0.0,
-                #  device='cpu'
                  ):
         super().__init__()
 
         self.num_layers = num_layers
-
+        self.channel_linear = nn.Conv1d(token_dims, token_dims, kernel_size=1)
         self.token_mixers = nn.ModuleList() 
         self.channel_mixers = nn.ModuleList() 
 
         for _ in range(num_layers):
             token_mixer = nn.Sequential(
+                # nn.LayerNorm(token_dims),
                 nn.Linear(token_dims, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -31,6 +31,7 @@ class MLPMixer1D(nn.Module):
                 )
             
             channel_mixer = nn.Sequential(
+                # nn.LayerNorm(num_tokens),
                 nn.Linear(num_tokens, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -45,18 +46,18 @@ class MLPMixer1D(nn.Module):
         self.channel_norm = nn.LayerNorm(num_tokens)
 
     def forward(self, x):
-
+        x = self.channel_linear(x)
         for i in range(self.num_layers):
             x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
-            id1 = x 
-            x = self.token_mixers[i](x)
+            id1 = x
             x = self.token_norm(x)
+            x = self.token_mixers[i](x)
             x += id1
             
+            x = self.token_norm(x)
             x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
             id2 = x
             x = self.channel_mixers[i](x)
-            x = self.channel_norm(x)
             x += id2 # b, token_dim, num_tokens == b, channels, length
         
         x = self.channel_norm(x)
@@ -207,12 +208,12 @@ if __name__ == '__main__':
               'mp_ksize':2, 
               'mp_stride':2, 
               'fc_dim':1024, 
-              'fc_num_layers':0, 
+              'fc_num_layers':4, 
               'mixer_num_layers':4,
               'n_classes':957,
-              'use_mixer':True,
+              'use_mixer':0,
               }
     model = resunit(**params)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
     input = torch.randn(64,1,1024)
     model(input)
-    print(model(input).shape)
+    print(model)

@@ -17,13 +17,13 @@ class MLPMixer1D(nn.Module):
         super().__init__()
 
         self.num_layers = num_layers
-
+        self.channel_linear = nn.Conv1d(token_dims, token_dims, kernel_size=1)
         self.token_mixers = nn.ModuleList() 
         self.channel_mixers = nn.ModuleList() 
 
         for _ in range(num_layers):
             token_mixer = nn.Sequential(
-                nn.LayerNorm(token_dims),
+                # nn.LayerNorm(token_dims),
                 nn.Linear(token_dims, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -32,7 +32,7 @@ class MLPMixer1D(nn.Module):
                 )
             
             channel_mixer = nn.Sequential(
-                nn.LayerNorm(num_tokens),
+                # nn.LayerNorm(num_tokens),
                 nn.Linear(num_tokens, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -47,17 +47,17 @@ class MLPMixer1D(nn.Module):
         self.channel_norm = nn.LayerNorm(num_tokens)
 
     def forward(self, x):
-
+        x = self.channel_linear(x)
         for i in range(self.num_layers):
             x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
-            id1 = x 
+            id1 = x
             x = self.token_norm(x)
             x = self.token_mixers[i](x)
             x += id1
             
+            x = self.token_norm(x)
             x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
             id2 = x
-            x = self.channel_norm(x)
             x = self.channel_mixers[i](x)
             x += id2 # b, token_dim, num_tokens == b, channels, length
         
@@ -101,22 +101,21 @@ class CNN_exp(nn.Module):
                 
         self.conv_layers = nn.Sequential(*conv_layers)
 
-        # mlp-mixer layers
         feature = self._get_feature_size()
-        fc_init_dim = feature.shape[-1] * feature.shape[-2]
-        
+        num_tokens = feature.shape[-1]
+        token_dims = feature.shape[-2]        
+        # mlp-mixer layers
         if self.use_mixer:
-            num_tokens = feature.shape[2]
-            token_dims = feature.shape[1]
+
             self.mlpmixer = MLPMixer1D(num_tokens=num_tokens,
                                        token_dims=token_dims,
                                        num_layers=mixer_num_layers,
-                                       dropout=0.0).to(self.device)
-
+                                       dropout=0.1).to(self.device)
             self.head = nn.Linear(token_dims, n_classes)
             
         # fc layers 
         else:
+            fc_init_dim = num_tokens * token_dims
             self.fc = self._create_mlp_block(fc_init_dim, fc_dim=fc_dim, fc_num_layers=fc_num_layers)
             self.head = nn.Linear(fc_dim, n_classes) if fc_num_layers else nn.Linear(fc_init_dim, n_classes)
             
@@ -160,7 +159,7 @@ class CNN_exp(nn.Module):
         if self.use_mixer:
             x = self.mlpmixer(x)
         else:
-            x = self.fc(x)
+              x = self.fc(x)
 
         x = self.head(x)
         return x
@@ -171,30 +170,36 @@ class CNN_exp(nn.Module):
 if __name__ == '__main__':
     from thop import profile
     import numpy as np
+    from torch.utils.tensorboard import SummaryWriter
     # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     device = 'cpu'
     torch.manual_seed(1)
     input = torch.randn(1, 1, 1024).to(device)
+    p= []
+    for f in range(1, 8):
+        # for f in range(1, 8):
+            params = {'conv_ksize':3, 
+                    'conv_padding':1, 
+                    'conv_init_dim':32, 
+                'conv_final_dim':256, 
+                'conv_num_layers':6, 
+                'mp_ksize':2, 
+                'mp_stride':2, 
+                'fc_dim':1024, 
+                'fc_num_layers':f, 
+                'mixer_num_layers':f,
+                'n_classes':957,
+                'use_mixer':1,
+                }
+            net = CNN_exp(**params).to(device)
+            tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_exp/net')
+            tb_writer.add_graph(net, (input))
+            # print(net)
+            out = net(input)
+            print(net)
 
-    params = {'conv_ksize':3, 
-              'conv_padding':1, 
-              'conv_init_dim':32, 
-              'conv_final_dim':256, 
-              'conv_num_layers':3, 
-              'mp_ksize':2, 
-              'mp_stride':2, 
-              'fc_dim':1024, 
-              'fc_num_layers':0, 
-              'mixer_num_layers':4,
-              'n_classes':957,
-              'use_mixer':0,
-              }
-    net = CNN_exp(**params).to(device)
-    # print(net)
-    out = net(input)
-    print(net)
-
-    flops, params = profile(net, inputs=(input, ))
-
-    print(f'FLOPs = {flops/1e9 :.4f} G')
-    print(f'Params = {params/1e6 :.4f} M')
+            flops, params = profile(net, inputs=(input, ))
+            p.append(params/1e6)
+    print(p)
+        # print(f'FLOPs = {flops/1e9 :.4f} G')
+        # print(f'Params = {params/1e6 :.4f} M')
