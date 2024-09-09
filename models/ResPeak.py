@@ -200,6 +200,7 @@ class resunit(nn.Module):
         return nn.Sequential(*block_list)
 
 if __name__ == '__main__':
+    from thop import profile
     params = {'conv_ksize':3, 
               'conv_padding':1, 
               'conv_init_dim':32, 
@@ -215,5 +216,6 @@ if __name__ == '__main__':
               }
     model = resunit(**params)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
     input = torch.randn(64,1,1024)
+    flops, params = profile(model, inputs=(input, ))
     model(input)
-    print(model)
+    print(params/1e6/64)
