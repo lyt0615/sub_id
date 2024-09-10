@@ -234,8 +234,12 @@ def train_model(model, save_path, ds, device='cpu', tune=False,  **kwargs):
     optimizer = torch.optim.AdamW(
         model.parameters(), **kwargs['Adam_params'])
 
-    scheduler = CosineAnnealingLR(optimizer, T_max=10, eta_min=1e-6)
-
+    if ds == 'fcgformer_ir':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer=optimizer,
+                                                                                  T_0=40,
+                                                                                  T_mult=2)  # fcgformer
+    else:
+        scheduler = CosineAnnealingLR(optimizer, T_max=10, eta_min=1e-6)
     # mode = 'min' if not tune else 'max'
     mode = 'max'
     es = EarlyStop(patience=kwargs['patience'], mode=mode)
@@ -281,4 +285,5 @@ def test_model(model, ds, device='cpu', verbose=True):
         logging.info(metrics.classification_report(true, pred, digits=4))
         # logging.info(f'accuracy:{metrics.accuracy_score(true, pred):.5f}')
         logging.info('Exact match rate (EMR): %.4f\n' %metrics.accuracy_score(true, pred))
+        logging.info('Accuracy: %.4f\n' %(np.count_nonzero(true==pred)/pred.shape[0]/pred.shape[1]))
     return outputs, pred, true
