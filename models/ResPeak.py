@@ -154,6 +154,7 @@ class resunit(nn.Module):
             self.mlpmixer = MLPMixer1D(num_tokens=num_tokens,
                                        token_dims=token_dims,
                                        num_layers=mixer_num_layers,
+                                       hidden_dims=768,
                                        dropout=0.0).to(self.device)
 
             self.head = nn.Linear(token_dims, n_classes)           
@@ -209,13 +210,14 @@ if __name__ == '__main__':
               'mp_ksize':2, 
               'mp_stride':2, 
               'fc_dim':1024, 
-              'fc_num_layers':4, 
-              'mixer_num_layers':4,
+              'fc_num_layers':2, 
+              'mixer_num_layers':2,
               'n_classes':957,
               'use_mixer':0,
               }
     model = resunit(**params)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
     input = torch.randn(64,1,1024)
     flops, params = profile(model, inputs=(input, ))
-    model(input)
-    print(params/1e6/64)
+    # model(input)
+    print(model)
+    print(params/1e6)

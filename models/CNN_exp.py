@@ -176,7 +176,7 @@ if __name__ == '__main__':
     torch.manual_seed(1)
     input = torch.randn(1, 1, 1024).to(device)
     p= []
-    for f in range(1, 8):
+    for f in range(2,3):
         # for f in range(1, 8):
             params = {'conv_ksize':3, 
                     'conv_padding':1, 

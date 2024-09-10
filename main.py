@@ -79,9 +79,6 @@ def catch_exception():
 
 if __name__ == "__main__":
 
-    # for f in config.FC:
-    #     for c in config.CONVS:
-    #         n_conv, n_fc = c, f
     args = get_args_parser()
 
     if args.train and args.ds == 'Bacteria':
@@ -175,7 +172,7 @@ if __name__ == "__main__":
         n_classes = 957
     else:
         n_classes = len(json.load(open(os.path.join(data_root, 'label.json'))))
-
+    params['net']['n_classes'] = n_classes
 
     if net_ == 'VanillaTransformer':
         from models.VanillaTransformer import VanillaTransformerEncoder
@@ -224,11 +221,16 @@ if __name__ == "__main__":
     elif net_ == 'ResPeak':
         from models.ResPeak import resunit
         net = resunit(**params['net']).to(device)
-        print(net)
 
     elif net_ == 'CNN_exp':
         from models.CNN_exp import CNN_exp
         net = CNN_exp(**params['net']).to(device)
+    elif net_ == 'ResPeak_MLPMixer1D':
+        from models.ResPeak_MLPMixer1D import resunit
+        net = resunit(1,17,20,6,2).to(device)
+    # elif net_ == 'fcgformer':
+    #     from transformers import AutoModelForImageClassification, AutoConfig
+    #     net = AutoConfig.from_pretrained(, trust_remote_code=True)
 
     logging.info(net)
 
