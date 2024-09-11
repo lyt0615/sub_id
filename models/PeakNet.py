@@ -79,3 +79,37 @@ class peaknet(nn.Module):
         x = self.fc(x)
 
         return x
+
+if __name__ == '__main__':
+    from thop import profile
+    import numpy as np
+    from torch.utils.tensorboard import SummaryWriter
+    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = 'cpu'
+    torch.manual_seed(1)
+    input = torch.randn(1, 1, 1024).to(device)
+
+    params = {'conv_ksize':3, 
+              'conv_padding':1, 
+              'conv_init_dim':32, 
+              'conv_final_dim':256, 
+              'conv_num_layers':3, 
+              'mp_ksize':2, 
+              'mp_stride':2, 
+              'fc_dim':1024, 
+              'fc_num_layers':1, 
+              'mixer_num_layers':3,
+              'n_classes':957,
+              'use_mixer':1,
+              }
+    net = peaknet(957, 1).to(device)
+    tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_exp/net')
+    tb_writer.add_graph(net, (input))
+    # print(net)
+    out = net(input)
+    print(net)
+
+    flops, params = profile(net, inputs=(input, ))
+
+    print(f'FLOPs = {flops/1e9 :.4f} G')
+    print(f'Params = {params/1e6 :.4f} M')    

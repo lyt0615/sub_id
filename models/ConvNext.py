@@ -177,7 +177,7 @@ if __name__ == "__main__":
               'mp_ksize':2, 
               'mp_stride':2, 
               'fc_dim':1024, 
-              'fc_num_layers':4, 
+              'fc_num_layers':3, 
               'mixer_num_layers':4,
               'n_classes':957,
               'use_mixer':True,

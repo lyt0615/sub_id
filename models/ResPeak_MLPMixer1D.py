@@ -78,10 +78,10 @@ class PreNormResidual(nn.Module):
 
 def FeedForward(dim, expansion_factor = 4, dropout = 0., dense = nn.Linear):
     return nn.Sequential(
-        dense(dim, dim * expansion_factor),
+        dense(dim, 768),
         nn.GELU(),
         nn.Dropout(dropout),
-        dense(dim * expansion_factor, dim),
+        dense(768, dim),
         nn.Dropout(dropout)
     )
 
@@ -89,7 +89,7 @@ def MLPMixer1D(*, sequence_length, channels, patch_size, dim, depth, num_classes
     assert (sequence_length % patch_size) == 0, 'sequence length must be divisible by patch size'
     num_patches = sequence_length // patch_size
     chan_first, chan_last = partial(nn.Conv1d, kernel_size = 1), nn.Linear
-
+    dim=patch_size*channels
     return nn.Sequential(
         Rearrange('b c (l p) -> b l (p c)', p = patch_size),
         nn.Linear(patch_size*channels, dim),
@@ -113,7 +113,7 @@ class resunit(nn.Module):
         self.mlpmixer = MLPMixer1D(
             sequence_length=8,
             channels=160,
-            patch_size=2,
+            patch_size=1,
             dim=512,
             depth=depth_mixer,
             num_classes=classes,
@@ -141,4 +141,5 @@ class resunit(nn.Module):
 if __name__ == '__main__':
     model = resunit(1,17,20,6)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
     input = torch.randn(64,1,1024)
+    print(model)
     model(input)

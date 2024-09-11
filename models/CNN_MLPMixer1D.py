@@ -104,11 +104,11 @@ class CNN(nn.Module):
         self.mlpmixer = MLPMixer1D(
             sequence_length=62,
             channels=256,
-            patch_size=2,
+            patch_size=1,
             dim=512,
             depth=self.depth_mixer,
             num_classes=n_classes,
-            expansion_factor=4,
+            expansion_factor=2,
             dropout=0.1
     )
         if init_weights:
@@ -203,14 +203,17 @@ def sigmoid_focal_loss(
 if __name__ == "__main__":
     from thop import profile
     from time import time
+    from torch.utils.tensorboard import SummaryWriter
     input = torch.randn((16,1,1024))
-    net = CNN()
+    net = CNN(957,4)
     t1 = time()
     output = net(input)
     t2=time()
     print((t2-t1)/16*1000)
     print(output.shape)
     flops, params = profile(net, inputs=(input, ))
+    tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_MLPMixer1D/net')
+    tb_writer.add_graph(net, (input))
     print('FLOPs = ' + str(flops/1000**3) + 'G')
     print('Params = ' + str(params/1000**2) + 'M')
 

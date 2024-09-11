@@ -11,8 +11,8 @@
 import sys
 sys.path.append('/data/YantiLiu/projects/substructure-ID/datasets')
 
-from modules import clones, LayerNorm, EncoderLayer, MultiHeadedAttention, PositionwiseFeedForward, LearnablePositionalEncoding, LearnableClassEmbedding
-from base import register_model
+from models.modules import clones, LayerNorm, EncoderLayer, MultiHeadedAttention, PositionwiseFeedForward, LearnablePositionalEncoding, LearnableClassEmbedding
+from models.base import register_model
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -193,28 +193,34 @@ class VanillaTransformerEncoder(nn.Module):
 
 
 if __name__ == "__main__":
-    params = {'conv_ksize':3, 
-              'conv_padding':1, 
-              'conv_init_dim':32, 
-              'conv_final_dim':256, 
-              'conv_num_layers':4, 
-              'mp_ksize':2, 
-              'mp_stride':2, 
-              'fc_dim':1024, 
-              'fc_num_layers':0, 
-              'mixer_num_layers':4,
-              'n_classes':957,
-              'use_mixer':True,
-              }
-    x = torch.rand(16, 1, 1024)
-    model = VanillaTransformerEncoder(**params)
-    y = model(x)
-    if type(y) == tuple:
-        cls_y, dist_y = y
-        print(cls_y.shape, dist_y.shape)
-    else:
-        print(y.shape)
-    print(model)
+    from thop import profile
+    p= []
+    for l in range(1, 9):
+        params = {'conv_ksize':3, 
+                'conv_padding':1, 
+                'conv_init_dim':32, 
+                'conv_final_dim':256, 
+                'conv_num_layers':4, 
+                'mp_ksize':2, 
+                'mp_stride':2, 
+                'fc_dim':1024, 
+                'fc_num_layers':0, 
+                'mixer_num_layers':4,
+                'n_classes':957,
+                'use_mixer':True,
+                }
+        x = torch.rand(1, 1, 1024)
+        model = VanillaTransformerEncoder(**params, nlayer=l)
+        y = model(x)
+        if type(y) == tuple:
+            cls_y, dist_y = y
+            print(cls_y.shape, dist_y.shape)
+        else:
+            print(y.shape)
+        print(model)
+        flops, params = profile(model, inputs=(x, ))
+        p.append(params/1e6)
+    print(p)
     # net = FPGrowingModule()
     # print(net)
     # print(net(x).shape)

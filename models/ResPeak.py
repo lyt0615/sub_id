@@ -211,7 +211,7 @@ if __name__ == '__main__':
               'mp_stride':2, 
               'fc_dim':1024, 
               'fc_num_layers':2, 
-              'mixer_num_layers':2,
+              'mixer_num_layers':1,
               'n_classes':957,
               'use_mixer':0,
               }
