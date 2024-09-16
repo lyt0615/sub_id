@@ -42,15 +42,19 @@ def get_args_parser():
                         default=2024,
                         help="Random seed")
 
-    # params of CNN_exp
+    # params of CNN_exp & CNN_SE
     parser.add_argument('--n_conv', 
                         help="Number of convolution layers in CNN_exp")
     parser.add_argument('--n_fc', 
                         help="Number of fc layers in CNN_exp")
     parser.add_argument('--n_mixer', 
-                        help="Number of MLPMixer1D")   
+                        help="Number of MLPMixer1D")  
+    parser.add_argument('--n_selayer', 
+                        help="Number of SE layers")   
     parser.add_argument('--use_mixer', default=False,
-                        help="Use MLPMixer1D or not")  
+                        help="Use MLPMixer1D or not")      
+    parser.add_argument('--use_se', default=False,
+                        help="Use SE or not")  
     
     # params of strategy
     parser.add_argument('--train_size',
@@ -99,6 +103,8 @@ if __name__ == "__main__":
         params['net']['fc_num_layers'] = int(args.n_fc)
     if args.n_mixer:
         params['net']['mixer_num_layers'] = int(args.n_mixer)
+    if args.n_selayer:
+        params['net']['n_selayer'] = int(args.n_selayer)
         
 
     if args.batch_size:
@@ -118,6 +124,11 @@ if __name__ == "__main__":
         else:
             n_fc = params['net']['fc_num_layers']
             ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_conv{n_conv}fc{n_fc}'
+
+    if args.net == 'CNN_SE':
+        n_selayer = params['net']['n_selayer']
+        n_fc = params['net']['fc_num_layers']
+        ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'fc{n_fc}_se{n_selayer}'
         
         # assert n_fc is None and args.use_mixer is None, 'Only one block should be used: either MLP or MLPMixer.'
             
@@ -225,6 +236,11 @@ if __name__ == "__main__":
     elif net_ == 'CNN_exp':
         from models.CNN_exp import CNN_exp
         net = CNN_exp(**params['net']).to(device)
+
+    elif net_ == 'CNN_SE':
+        from models.CNN_SE import resunit
+        net = resunit(**params['net']).to(device)
+
     elif net_ == 'ResPeak_MLPMixer1D':
         from models.ResPeak_MLPMixer1D import resunit
         net = resunit(1,17,20,6,2).to(device)
