@@ -22,7 +22,6 @@ class MLPMixer1D(nn.Module):
 
         for _ in range(num_layers):
             token_mixer = nn.Sequential(
-                # nn.LayerNorm(token_dims),
                 nn.Linear(token_dims, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -31,7 +30,6 @@ class MLPMixer1D(nn.Module):
                 )
             
             channel_mixer = nn.Sequential(
-                # nn.LayerNorm(num_tokens),
                 nn.Linear(num_tokens, hidden_dims), 
                 nn.GELU(), 
                 nn.Dropout(dropout), 
@@ -43,26 +41,47 @@ class MLPMixer1D(nn.Module):
             self.channel_mixers.append(channel_mixer)
 
         self.token_norm = nn.LayerNorm(token_dims)
-        self.channel_norm = nn.LayerNorm(num_tokens)
+        # self.channel_norm = nn.LayerNorm(num_tokens)
 
     def forward(self, x):
         x = self.channel_linear(x)
         for i in range(self.num_layers):
-            x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
             id1 = x
+            x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
             x = self.token_norm(x)
-            x = self.token_mixers[i](x)
+            x = x.permute(0, 2, 1)
+            x = self.channel_mixers[i](x)
             x += id1
             
-            x = self.token_norm(x)
             x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
             id2 = x
-            x = self.channel_mixers[i](x)
-            x += id2 # b, token_dim, num_tokens == b, channels, length
-        
-        x = self.channel_norm(x)
-        x = x.mean(-1) # b, channels, length → b, channels
+            x = self.token_norm(x)
+            x = self.token_mixers[i](x)
+            x += id2
+            x = x.permute(0, 2, 1)
+        x = x.permute(0, 2, 1)
+        x = self.token_norm(x)
+        x = x.mean(-2)
         return x
+
+    # def forward(self, x):
+    #     x = self.channel_linear(x)
+    #     for i in range(self.num_layers):
+    #         x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
+    #         id1 = x
+    #         x = self.token_norm(x)
+    #         x = self.token_mixers[i](x)
+    #         x += id1
+            
+    #         x = self.token_norm(x)
+    #         x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
+    #         id2 = x
+    #         x = self.channel_mixers[i](x)
+    #         x += id2 # b, token_dim, num_tokens == b, channels, length
+        
+    #     x = self.channel_norm(x)
+    #     x = x.mean(-1) # b, channels, length → b, channels
+    #     return x
     
 class Conv(nn.Module):
     default_act = nn.LeakyReLU()
@@ -93,55 +112,48 @@ class ConvAttention(nn.Module):
         out = y.expand_as(x) * x
         return out
 
-class inception(nn.Module):
+class SE_block(nn.Module):
     def __init__(self,c1,c2,use_se):
-        super(inception, self).__init__()
-        # self.conv1 = Conv(c1,c1,5,1,2)
-        # self.conv2 = Conv(c1,c1,7,1,3)
-        # self.conv3 = Conv(c1,c1,9,1,4)
-        self.conv_2 = Conv(c2,c2,5,2,2)
-        self.conv = Conv(c1, c2)
+        super(SE_block, self).__init__()
+        self.conv_2 = Conv(c2,c2)
+        self.conv = Conv(c1, c2, 5, 2, 2)
         self.se = ConvAttention(c2,c2) if use_se else nn.Identity()
         self.droupt = nn.Dropout(0.3)
 
     def forward(self,x):
-        # x1 = self.conv1(x)
-        # x2 = self.conv2(x)
-        # x3 = self.conv3(x)
-        # x_2 = torch.cat((x1,x2,x3),1)
         x = self.conv(x)
         x = self.se(x)
-        x = self.conv_2(x)
         return x
 
 class Bottleneck(nn.Module):
-    def __init__(self, c1, c2, use_se):
+    def __init__(self, c1, c2, use_res, use_se):
         super().__init__()
-        self.cv1 = inception(c1,c2,use_se)
-        self.cv = nn.Sequential(
+        self.se_block = SE_block(c1,c2, use_se)
+        self.use_res = use_res
+        if use_res:
+            self.res_conv = nn.Sequential(
             nn.Conv1d(c1, c2, 1, 2, 0),
             nn.BatchNorm1d(c2),
             nn.ReLU()
-        )
+        ) 
     def forward(self, x):
-        y = self.cv1(x) + self.cv(x)
+        y = self.se_block(x) + self.res_conv(x) if self.use_res else self.se_block(x)
         return y
 
 
 class resunit(nn.Module):
-    def __init__(self, data_channel=1, n_classes=957, a=32, n_selayer=6, fc_num_layers=0, fc_dim=1024, use_mixer=False, use_se=False, mixer_num_layers=4, **kwargs):
+    def __init__(self, data_channel=1, n_classes=957, a=32, depth=6, fc_num_layers=0, fc_dim=1024, use_mixer=False, use_res=False, use_se=False, mixer_num_layers=4, **kwargs):
         super(resunit, self).__init__()
-        self.layer = n_selayer
+        self.layer = depth
         self.inplane = data_channel       #卷积核数目
-        self.conv0 = Conv(data_channel,8 * a,5,2)
-        self.res_block = self.make_layer(Bottleneck,8 * a, n_selayer, use_se)
-        self.fc = nn.Linear(64 * a, n_classes)
+        self.res_block = self.make_layer(Bottleneck,8 * a, depth, use_res, use_se)
         self.use_mixer = use_mixer
 
         # fc layers 
         self.fc_num_layers = fc_num_layers
         self.fc_dim = fc_dim
         feature = self._get_feature_size()
+        self.fc = nn.Linear(feature.shape[-1] * feature.shape[-2], n_classes)
         if fc_num_layers:
             
             fc_init_dim = feature.shape[-1] * feature.shape[-2]
@@ -156,7 +168,7 @@ class resunit(nn.Module):
             self.mlpmixer = MLPMixer1D(num_tokens=num_tokens,
                                        token_dims=token_dims,
                                        num_layers=mixer_num_layers,
-                                       hidden_dims=768,
+                                       hidden_dims=fc_dim,
                                        dropout=0.0).to(self.device)
 
             self.head = nn.Linear(token_dims, n_classes)           
@@ -189,7 +201,7 @@ class resunit(nn.Module):
             x = self.fc(x)
         return x
 
-    def make_layer(self,block,plane,block_num,use_se):
+    def make_layer(self,block,plane,block_num,use_res, use_se):
         '''
         :param block: block模板
         :param plane: 每个模块中间运算的维度
@@ -198,9 +210,9 @@ class resunit(nn.Module):
         block_list = []
         for i in range(block_num):
             if i == 0:
-                block_list.append(block(self.inplane,plane,use_se))
+                block_list.append(block(self.inplane,plane,use_res, use_se))
             else:
-                block_list.append(block(plane,plane,use_se))
+                block_list.append(block(plane,plane,use_res, use_se))
         return nn.Sequential(*block_list)
 
 if __name__ == '__main__':
@@ -217,20 +229,21 @@ if __name__ == '__main__':
             'conv_num_layers':4, 
             'mp_ksize':2, 
             'mp_stride':2, 
-            'fc_dim':512, 
-            'fc_num_layers':2, 
-            'mixer_num_layers':1,
+            'fc_dim':1024, 
+            'fc_num_layers':0, 
+            'mixer_num_layers':10,
             'n_classes':957,
             'use_mixer':0,
-            'n_selayer': 4,
-            'use_se': 1
+            'depth': 20,
+            'use_se': 1,
+            'use_res': 1,
             }
     model = resunit(**params).to(device)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
     input = torch.randn(64,1,1024).to(device)
-    # tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_SE/net')
-    # tb_writer.add_graph(model, (input))
+    tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_SE/net')
+    tb_writer.add_graph(model, (input))
     flops, params = profile(model, inputs=(input, ))
     # model(input)
     print(model)
-    # p.append(params/1e6)
+    print(params/1e6)
     # print(p)

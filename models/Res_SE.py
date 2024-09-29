@@ -67,9 +67,38 @@ class MLPMixer1D(nn.Module):
         x = self.channel_norm(x)
         x = x.mean(-1) # b, channels, length → b, channels
         return x
+
+class Conv(nn.Module):
+    default_act = nn.LeakyReLU()
+    def __init__(self, c1, c2, k=1, s=1, p=0):
+        super().__init__()
+        self.conv = nn.Conv1d(c1, c2, k, s, p, bias=False)
+        self.bn = nn.BatchNorm1d(c2)
+        self.act = self.default_act
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
     
+class SE_block(nn.Module):
+    def __init__(self, in_channels, channels, reduction_factor=4):
+        super(SE_block, self).__init__()
+        inter_channels = max(in_channels//reduction_factor, 16)
+        self.channels = channels
+        self.fc1 = Conv(in_channels,inter_channels,1)
+        self.fc2 = Conv(inter_channels,channels,1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        y = x
+        y = F.adaptive_avg_pool1d(y, 1)
+        y = self.fc1(y)
+        y = self.fc2(y)
+        y = self.sigmoid(y)
+        out = y.expand_as(x) * x
+        return out
+        
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, stride=1):
+    def __init__(self, in_channels, out_channels, stride=1, use_se=0):
         super(ResidualBlock, self).__init__()
 
         # Layers
@@ -79,6 +108,7 @@ class ResidualBlock(nn.Module):
         self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size=5,
                                stride=1, padding=2, dilation=1, bias=False)
         self.bn2 = nn.BatchNorm1d(num_features=out_channels)
+        self.se = SE_block(out_channels, out_channels) if use_se else nn.Identity()
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_channels != out_channels:
@@ -90,16 +120,14 @@ class ResidualBlock(nn.Module):
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
+        out = self.se(out)
         out += self.shortcut(x)
         out = F.relu(out)
         return out
 
-
 class ResNet(nn.Module):
-    def __init__(self, hidden_sizes, num_blocks, input_dim=256,
-                 in_channels=64, n_classes=957, fc_num_layers=0, fc_dim=1024, use_mixer=0, mixer_num_layers=0, **kwargs):
+    def __init__(self, hidden_sizes, num_blocks, input_dim, in_channels, n_classes=957, fc_num_layers=0, fc_dim=1024, use_mixer=0, mixer_num_layers=0, use_se=0, **kwargs):
         super(ResNet, self).__init__()
-        assert len(num_blocks) == len(hidden_sizes)
         self.input_dim = input_dim
         self.in_channels = in_channels
         self.n_classes = n_classes
@@ -114,7 +142,7 @@ class ResNet(nn.Module):
         strides = [1] + [2] * (len(hidden_sizes) - 1)
         for idx, hidden_size in enumerate(hidden_sizes):
             layers.append(self._make_layer(hidden_size, num_blocks[idx],
-                                           stride=strides[idx]))
+                                           stride=strides[idx], use_se=use_se))
         self.encoder = nn.Sequential(*layers)
 
         self.z_dim = self._get_encoding_size()
@@ -167,12 +195,12 @@ class ResNet(nn.Module):
             z = self.linear(z)
         return z
 
-    def _make_layer(self, out_channels, num_blocks, stride=1):
+    def _make_layer(self, out_channels, num_blocks, stride=1, use_se=0):
         strides = [stride] + [1] * (num_blocks - 1)
         blocks = []
         for stride in strides:
             blocks.append(ResidualBlock(self.in_channels, out_channels,
-                                        stride=stride))
+                                        stride=stride, use_se=use_se))
             self.in_channels = out_channels
         return nn.Sequential(*blocks)
 
@@ -180,7 +208,7 @@ class ResNet(nn.Module):
         """
         Returns the dimension of the encoded input.
         """
-        temp = Variable(torch.rand(1, 1, self.input_dim))
+        temp = Variable(torch.rand(2, 1, self.input_dim))
         z = self.encode(temp)
         return z.shape
 
@@ -195,17 +223,23 @@ class ResNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
 # CNN parameters
-layers = 6
-hidden_size = 100
-block_size = 2
-hidden_sizes = [hidden_size] * layers
-num_blocks = [block_size] * layers
-input_dim = 1024
-in_channels = 64
-n_classes = 30
+# layers = 6
+# hidden_size = 100
+# block_size = 2
+# hidden_sizes = [hidden_size] * layers
+# num_blocks = [block_size] * layers
+# input_dim = 1024
+# in_channels = 64
+# n_classes = 30
 
 
-def resnet(**kwargs):
+def resnet(depth=6, hidden_size=100, block_size=2,  input_dim=1024,
+                 in_channels=64, **kwargs):
+    hidden_sizes = [hidden_size] * depth
+    num_blocks = [block_size] * depth
+    input_dim = input_dim
+    in_channels = in_channels
+    assert len(num_blocks) == len(hidden_sizes)
     return ResNet(hidden_sizes, num_blocks, input_dim=input_dim,
                   in_channels=in_channels, **kwargs)
 
@@ -224,7 +258,9 @@ if __name__ == "__main__":
               'fc_num_layers':4, 
               'mixer_num_layers':2,
               'n_classes':957,
-              'use_mixer':1,
+              'use_mixer':0,
+              'use_se': 1,
+              'depth': 8,
               }
     net = resnet(**params)
     inp = torch.randn(16, 1, 1024)

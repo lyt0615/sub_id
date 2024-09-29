@@ -42,19 +42,21 @@ def get_args_parser():
                         default=2024,
                         help="Random seed")
 
-    # params of CNN_exp & CNN_SE
+    # params of CNN_exp & CNN_SE & Res_SE
     parser.add_argument('--n_conv', 
                         help="Number of convolution layers in CNN_exp")
     parser.add_argument('--n_fc', 
                         help="Number of fc layers in CNN_exp")
     parser.add_argument('--n_mixer', 
                         help="Number of MLPMixer1D")  
-    parser.add_argument('--n_selayer', 
-                        help="Number of SE layers")   
+    parser.add_argument('--depth', 
+                        help="Number of bottleneck blocks")   
     parser.add_argument('--use_mixer', default=False,
                         help="Use MLPMixer1D or not")      
     parser.add_argument('--use_se', default=False,
                         help="Use SE or not")  
+    parser.add_argument('--use_res', default=False,
+                        help="Use Residual connection or not")  
     
     # params of strategy
     parser.add_argument('--train_size',
@@ -64,6 +66,8 @@ def get_args_parser():
     parser.add_argument('--epoch',
                         help="epochs for training")
     parser.add_argument('--lr',
+                        help="learning rate")
+    parser.add_argument('--use_PI', default=False,
                         help="learning rate")
     args = parser.parse_args()
     return args
@@ -88,6 +92,12 @@ if __name__ == "__main__":
     if args.train and args.ds == 'Bacteria':
         args.lr = '1e-3'
         args.epoch = '50'
+    elif args.train and args.ds == 'fcgformer_ir':
+        args.lr = '2e-3'
+        args.epoch = '600'
+    else:
+        args.lr = '1e-4'
+        args.epoch = '200'
 
     if args.tune and args.ds == 'Bacteria':
         args.batch_size = '8'
@@ -96,6 +106,9 @@ if __name__ == "__main__":
     
     params = {'net': config.NET, 'strategy': config.STRATEGY['train'] if args.train or args.debug else config.STRATEGY['tune']}
     params['net']['use_mixer'] = eval(args.use_mixer) if type(args.use_mixer) == str else args.use_mixer
+    params['net']['use_se'] = eval(args.use_se) if type(args.use_se) == str else args.use_se
+    params['net']['use_res'] = eval(args.use_res) if type(args.use_res) == str else args.use_res
+    params['strategy']['use_PI'] = args.use_PI
 
     if args.n_conv:
         params['net']['conv_num_layers'] = int(args.n_conv)
@@ -103,8 +116,8 @@ if __name__ == "__main__":
         params['net']['fc_num_layers'] = int(args.n_fc)
     if args.n_mixer:
         params['net']['mixer_num_layers'] = int(args.n_mixer)
-    if args.n_selayer:
-        params['net']['n_selayer'] = int(args.n_selayer)
+    if args.depth:
+        params['net']['depth'] = int(args.depth)
         
 
     if args.batch_size:
@@ -126,12 +139,23 @@ if __name__ == "__main__":
             ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_conv{n_conv}fc{n_fc}'
 
     if args.net == 'CNN_SE':
-        n_selayer = params['net']['n_selayer']
+        depth = args.depth
+        n_mixer = params['net']['mixer_num_layers']
         n_fc = params['net']['fc_num_layers']
-        ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'fc{n_fc}_se{n_selayer}'
-        
-        # assert n_fc is None and args.use_mixer is None, 'Only one block should be used: either MLP or MLPMixer.'
-            
+        if args.use_mixer:
+            ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'mixer{n_mixer}_layer{depth}'
+        else:
+            ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'fc{n_fc}_layer{depth}'  
+
+    if args.net == 'Res_SE':
+        depth = args.depth
+        n_mixer = params['net']['mixer_num_layers']
+        n_fc = params['net']['fc_num_layers']
+        if args.use_mixer:
+            ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'mixer{n_mixer}_layer{depth}'
+        else:
+            ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'fc{n_fc}_layer{depth}'          
+
     elif args.net == 'ResPeak_MLPMixer1D' or args.net == 'CNN_MLPMixer1D':
         if args.use_mixer:
             ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_{int(args.n_mixer)}'
@@ -187,68 +211,75 @@ if __name__ == "__main__":
 
     if net_ == 'VanillaTransformer':
         from models.VanillaTransformer import VanillaTransformerEncoder
-        net = VanillaTransformerEncoder(**params['net']).to(device)   
+        net = VanillaTransformerEncoder(**params['net'])   
     if net_ == 'CNN_MLPMixer1D':
         from models.CNN_MLPMixer1D import CNN
-        net = CNN(957, 8).to(device)   
+        net = CNN(957, 8)   
     elif net_ == 'ResNet':
         from models.ResNet import resnet
-        net = resnet(**params['net']).to(device)
+        net = resnet(**params['net'])
+
+    elif net_ == 'Res_SE':
+        from models.Res_SE import resnet
+        net = resnet(**params['net'])
+
     elif net_ == 'LSTM':
         from models.LSTM import LSTM
-        net = LSTM(n_classes=n_classes).to(device)
+        net = LSTM(n_classes=n_classes)
     elif net_ == 'TextCNN':
         from models.TextCNN import TextCNN
-        net = TextCNN(n_classes=n_classes).to(device)
+        net = TextCNN(n_classes=n_classes)
 
     elif net_ == 'RamanNet':
         from models.RamanNet import RamanNet
-        net = RamanNet(n_classes=n_classes).to(device)
+        net = RamanNet(n_classes=n_classes)
 
     elif net_ == 'ConvMSANet':
         from models.ConvMSANet import convmsa_reflection
-        net = convmsa_reflection(stem=True, **params['net']).to(device)
+        net = convmsa_reflection(stem=True, **params['net'])
 
     elif net_ == 'PACE':
         from models.PACE import Pace
-        net = Pace(n_classes=n_classes).to(device)
+        net = Pace(n_classes=n_classes)
 
     elif net_ == 'ConvNext':
         from models.ConvNext import ConvNeXt
-        net = ConvNeXt(**params['net']).to(device)
+        net = ConvNeXt(**params['net'])
 
     elif net_ == 'Xception':
         from models.Xception import xception
-        net = xception(n_classes).to(device)
+        net = xception(n_classes)
 
     elif net_ == 'SANet':
         from models.SANet import SANet
-        net = SANet(n_classes).to(device)
+        net = SANet(n_classes)
 
     elif net_ == 'CNN':
         from models.CNN import CNN
-        net = CNN(n_classes).to(device)
+        net = CNN(n_classes)
 
     elif net_ == 'ResPeak':
         from models.ResPeak import resunit
-        net = resunit(**params['net']).to(device)
+        net = resunit(**params['net'])
 
     elif net_ == 'CNN_exp':
         from models.CNN_exp import CNN_exp
-        net = CNN_exp(**params['net']).to(device)
+        net = CNN_exp(**params['net'])
 
     elif net_ == 'CNN_SE':
         from models.CNN_SE import resunit
-        net = resunit(**params['net']).to(device)
+        net = resunit(**params['net'])
 
     elif net_ == 'ResPeak_MLPMixer1D':
         from models.ResPeak_MLPMixer1D import resunit
-        net = resunit(1,17,20,6,2).to(device)
+        net = resunit(1,17,20,6,2)
     # elif net_ == 'fcgformer':
     #     from transformers import AutoModelForImageClassification, AutoConfig
     #     net = AutoConfig.from_pretrained(, trust_remote_code=True)
 
     logging.info(net)
+    print(ts)
+    net = net.to(device)
 
     # ================================3. start to train/tune/test ======================================
     try:
@@ -279,7 +310,4 @@ if __name__ == "__main__":
 
         traceback.print_exc()
         print(e)
-        os.remove(f'logs/{ds}/{net_}/{ts}_{mode}.log')
-
-
-
+        catch_exception()

@@ -9,7 +9,7 @@ NET = {'conv_ksize':3,
        'fc_num_layers':3, 
        'mixer_num_layers':4,
        'n_classes':957,
-    #    'use_mixer':True
+       'use_mixer':True
        }
 
 
@@ -17,22 +17,19 @@ STRATEGY = {
     'train': {
         "batch_size": 64,
         "epoch": 200,
-        "patience": 200,
+        "patience": 600,
         'train_size': None,
         "optmizer": "Adam",
-        "Adam_params": {"lr": 1e-4}, # 2e-3
-        # "Adam_params": {"lr": 1e-3}, # for Bacteria
+        "Adam_params": {"lr": 1e-4}, # for qm9s
+
     },
     'tune': {
         "batch_size": 64,
         # "batch_size": 8, # for Bacteria
-        "epoch": 200,
+        "epoch": 600,
         "patience": 50,
         'train_size': None,
         "optmizer": "Adam",
         "Adam_params": {"lr": 1e-5},
     }
 }
-
-CONVS = range(3, 8)
-FC = range(3, 5)

@@ -82,14 +82,16 @@ class ConvAttention(nn.Module):
         self.channels = channels
         self.fc1 = Conv(in_channels,inter_channels,1)
         self.fc2 = Conv(inter_channels,channels,1)
-        self.softmax = nn.Sigmoid()
+        self.sigmoid = nn.Sigmoid()
+        self.linear = nn.Linear(510, 1)
 
     def forward(self, x):
         y = x
         y = F.adaptive_avg_pool1d(y, 1)
+        # y = self.linear(y)
         y = self.fc1(y)
         y = self.fc2(y)
-        y = self.softmax(y)
+        y = self.sigmoid(y)
         out = y.expand_as(x) * x
         return out
 

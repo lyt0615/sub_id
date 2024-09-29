@@ -21,12 +21,15 @@ class SE_s(nn.Module):
         super(SE_s, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool1d(1)
         self.conv = nn.Linear(channel, channel, bias=False)
-        self.sigmoid = nn.Softmax(1)
+        self.softmax = nn.Softmax(1)
+        self.linear = nn.Linear(245, 1)
 
     def forward(self, x):
-        y = self.avg_pool(x)
+        # y = self.avg_pool(x)
+        y = self.linear(x)
+        print(y.shape)
         y = self.conv(y.squeeze()).squeeze().unsqueeze(-1)
-        y = self.sigmoid(y)
+        y = self.softmax(y)
         return x * y.expand_as(x)
 
 
@@ -67,7 +70,7 @@ class peaknet(nn.Module):
         self.conv_1 = Conv(data_channel, 8 * a, 5, 2, 0)
         self.conv_2 = Conv(8 * a, 8 * a, 5, 2, 0)
         self.incept1 = peak(8 * a, 8 * a)
-        self.fc = nn.Linear(768 * a, classes)
+        self.fc = nn.Linear(968 * a, classes)
         self.droupt = nn.Dropout(0.3)
 
     def forward(self, x):

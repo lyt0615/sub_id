@@ -49,21 +49,42 @@ class MLPMixer1D(nn.Module):
     def forward(self, x):
         x = self.channel_linear(x)
         for i in range(self.num_layers):
-            x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
             id1 = x
+            x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
             x = self.token_norm(x)
-            x = self.token_mixers[i](x)
+            x = x.permute(0, 2, 1)
+            x = self.channel_mixers[i](x)
             x += id1
             
-            x = self.token_norm(x)
             x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
             id2 = x
-            x = self.channel_mixers[i](x)
-            x += id2 # b, token_dim, num_tokens == b, channels, length
-        
-        x = self.channel_norm(x)
-        x = x.mean(-1) # b, channels, length → b, channels
+            x = self.token_norm(x)
+            x = self.token_mixers[i](x)
+            x += id2
+            x = x.permute(0, 2, 1)
+        x = x.permute(0, 2, 1)
+        x = self.token_norm(x)
+        x = x.mean(-2)
         return x
+        
+    # def forward(self, x):
+    #     x = self.channel_linear(x)
+    #     for i in range(self.num_layers):
+    #         x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
+    #         id1 = x
+    #         x = self.token_norm(x)
+    #         x = self.token_mixers[i](x)
+    #         x += id1
+            
+    #         x = self.token_norm(x)
+    #         x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
+    #         id2 = x
+    #         x = self.channel_mixers[i](x)
+    #         x += id2 # b, token_dim, num_tokens == b, channels, length
+        
+    #     x = self.channel_norm(x)
+    #     x = x.mean(-1) # b, channels, length → b, channels
+    #     return x
 
 
 
@@ -125,6 +146,54 @@ class CNN_exp(nn.Module):
             tmp = torch.randn(1, 1, 1024).to(self.device)
             feature = self.conv_layers(tmp)
         return feature
+
+    def calc_pi_acc(self, pred, targets, features):
+        device = next(self.parameters()).device
+        pred_1 = pred  # prediction of discrimination pathway (using all filters)
+        correlation = nn.Parameter(F.softmax(torch.rand(size=(targets.shape[-1], features.shape[1])), dim=0)).to(device)
+        # sample class ID using reparameter trick (adjusted for multi-label)
+        with torch.no_grad():
+            sample_cat = torch.bernoulli(pred).to(device)  # Sampling binary labels for multi-label case
+            ind_positive_sample = sample_cat == targets  # mark correct samples
+            sample_cat_oh = sample_cat.float().to(device)   # One-hot is not needed since it's multi-label
+            epsilon = torch.where(sample_cat_oh != 0, 1 - pred, -pred).detach()
+
+        # Adjust for binary mask
+        sample_cat_oh = pred + epsilon
+
+        # sample filter using reparameter trick (adjusted for multi-label)
+        correlation_softmax = F.softmax(correlation, dim=0)
+        correlation_samples = sample_cat_oh @ correlation_softmax
+        with torch.no_grad():
+            ind_sample = torch.bernoulli(correlation_samples).bool()
+            epsilon = torch.where(ind_sample, 1 - correlation_samples, -correlation_samples)
+
+        binary_mask = correlation_samples + epsilon
+        feature_mask = features * binary_mask[..., None, None]  # binary mask applied to features
+
+        # Prediction using class-specific filters
+        pred_2 = torch.sigmoid(self.classifier(feature_mask))  # Sigmoid for multi-label prediction
+
+        # Complementary filters sampling
+        with torch.no_grad():
+            correlation_samples = correlation_softmax[targets]
+            binary_mask = torch.bernoulli(correlation_samples).bool()
+            binary_mask_squeezed = torch.any(binary_mask, dim=1)
+            # features = features.unsqueeze(1).repeat(1,self.n_classes,1,1,1)
+            feature_mask_self = features * ~binary_mask_squeezed[..., None, None]
+
+        pred_3 = torch.sigmoid(self.classifier(feature_mask_self))  # Sigmoid for multi-label prediction
+
+        # Output dictionary with the predictions and features
+        return {"features": features, 'pred_1': pred_1, 'pred_2': pred_2, 'pred_3': pred_3,
+            #    'ind_positive_sample': ind_positive_sample
+               }
+            
+    # def forward(self, inputs, targets=None, forward_pass='default'):
+    #     features = self.backbone(inputs)
+    #     pred = torch.sigmoid(self.classifier(features))  # Use sigmoid for multi-label classification
+    #     accdict = self.calc_pi_acc(pred, targets, features)
+    #     return accdict
     
     def _get_conv_channels(self):
         # if self.conv_num_layers <= 4:
