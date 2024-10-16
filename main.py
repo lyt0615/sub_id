@@ -53,9 +53,9 @@ def get_args_parser():
                         help="Number of bottleneck blocks")   
     parser.add_argument('--use_mixer', default=False,
                         help="Use MLPMixer1D or not")      
-    parser.add_argument('--use_se', default=False,
+    parser.add_argument('--use_se', default=True,
                         help="Use SE or not")  
-    parser.add_argument('--use_res', default=False,
+    parser.add_argument('--use_res', default=True,
                         help="Use Residual connection or not")  
     
     # params of strategy
@@ -67,7 +67,7 @@ def get_args_parser():
                         help="epochs for training")
     parser.add_argument('--lr',
                         help="learning rate")
-    parser.add_argument('--use_PI', default=False,
+    parser.add_argument('--use_pi', default=False,
                         help="learning rate")
     args = parser.parse_args()
     return args
@@ -106,9 +106,11 @@ if __name__ == "__main__":
     
     params = {'net': config.NET, 'strategy': config.STRATEGY['train'] if args.train or args.debug else config.STRATEGY['tune']}
     params['net']['use_mixer'] = eval(args.use_mixer) if type(args.use_mixer) == str else args.use_mixer
-    params['net']['use_se'] = eval(args.use_se) if type(args.use_se) == str else args.use_se
-    params['net']['use_res'] = eval(args.use_res) if type(args.use_res) == str else args.use_res
-    params['strategy']['use_PI'] = args.use_PI
+    
+    if 'SE' in args.net:
+        params['net']['use_se'] = eval(args.use_se) if type(args.use_se) == str else args.use_se
+        params['net']['use_res'] = eval(args.use_res) if type(args.use_res) == str else args.use_res
+    params['strategy']['use_pi'] = args.use_pi
 
     if args.n_conv:
         params['net']['conv_num_layers'] = int(args.n_conv)

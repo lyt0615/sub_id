@@ -254,7 +254,7 @@ def train_model(model, save_path, ds, device='cpu', tune=False,  **kwargs):
     test_loader = make_testloader(ds, pool_dim=pool_dim)
     binary = True if 'ir' in ds or 'raman' in ds else False
     if binary:
-        if kwargs['use_PI']:
+        if kwargs['use_pi']:
             criterion = ClassSpecificCE
         else:
             criterion = torch.nn.BCELoss()
@@ -286,7 +286,7 @@ def train_model(model, save_path, ds, device='cpu', tune=False,  **kwargs):
         # _, _, _, test_acc, test_loss = engine.test_epoch(binary=binary)
 
         if acc:
-            es(acc, model, f'{save_path}/{epoch}_f1_{acc*100:0f}.pth')
+            es(acc, model, f'{save_path}/{epoch}_f1_{str(acc)[2:6]}.pth')
         else:
             assert ValueError('not metrics')
         if es.early_stop:
@@ -317,3 +317,32 @@ def test_model(model, ds, device='cpu', verbose=True):
         logging.info('Exact match rate (EMR): %.4f\n' %metrics.accuracy_score(true, pred))
         logging.info('Accuracy: %.4f\n' %(np.count_nonzero(true==pred)/pred.shape[0]/pred.shape[1]))
     return outputs, pred, true
+
+def inf_time(model):
+    iterations = 300
+    device = torch.device("cuda:0")
+    model.to(device)
+
+    random_input = torch.randn(1, 1, 1024).to(device)
+    starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+
+    # Preheat GPU
+    for _ in range(50):
+        _ = model(random_input)
+
+    # Measure inference time
+    times = torch.zeros(iterations)     # Save the time of each iteration
+    with torch.no_grad():
+        for iter in range(iterations):
+            starter.record()
+            _ = model(random_input)
+            ender.record()
+            # Synchronize GPU time
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender) # Calculate time
+            times[iter] = curr_time
+            # print(curr_time)
+
+    mean_time = times.mean().item()
+    return mean_time
+    # print("Inference time: {:.6f}, FPS: {} ".format(mean_time, 1000/mean_time))
