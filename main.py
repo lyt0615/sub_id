@@ -294,7 +294,7 @@ if __name__ == "__main__":
     try:
 
         if args.train or args.debug:
-            train_model(net, save_path, ds=args.ds, device=device, **params['strategy'])
+            train_model(net, save_path, ds=args.ds, device=device)
 
         elif args.tune:
             import torch
@@ -303,7 +303,7 @@ if __name__ == "__main__":
             print(base_model_path)
             net = load_net_state(net, torch.load(f'{base_model_path}.pth'))
             train_model(net, save_path=f"{base_model_path}/tune", ds=args.ds, device=device,
-                        tune=True, **params['strategy'])
+                        tune=True)
 
         elif args.test:
             import torch
@@ -312,7 +312,7 @@ if __name__ == "__main__":
             print(test_model_path)
             net = load_net_state(net, torch.load(test_model_path,
                                                 map_location={'cuda:0': device, 'cuda:1': device}))
-            test_model(net, device=device, ds=args.ds, **params['strategy'])
+            test_model(net, device=device, ds=args.ds)
 
     except Exception as e:
         import traceback
