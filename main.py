@@ -33,7 +33,6 @@ def get_args_parser():
     parser.add_argument('-debug', '--debug', action='store_true',
                         help="start debug")
 
-
     parser.add_argument('--base_checkpoint',
                         help="Choose base model for fine-tune")
     parser.add_argument('--test_checkpoint',
@@ -42,7 +41,7 @@ def get_args_parser():
                         default=2024,
                         help="Random seed")
 
-    # params of CNN_exp & CNN_SE & Res_SE
+    # params of CNN_exp & CNN_SE & MLPMixer
     parser.add_argument('--n_conv', 
                         help="Number of convolution layers in CNN_exp")
     parser.add_argument('--n_fc', 
@@ -107,10 +106,10 @@ if __name__ == "__main__":
     params = {'net': config.NET, 'strategy': config.STRATEGY['train'] if args.train or args.debug else config.STRATEGY['tune']}
     params['net']['use_mixer'] = eval(args.use_mixer) if type(args.use_mixer) == str else args.use_mixer
     
-    if 'SE' in args.net:
-        params['net']['use_se'] = eval(args.use_se) if type(args.use_se) == str else args.use_se
-        params['net']['use_res'] = eval(args.use_res) if type(args.use_res) == str else args.use_res
-    params['strategy']['use_pi'] = args.use_pi
+    # if :
+    #     params['net']['use_se'] = eval(args.use_se) if type(args.use_se) == str else args.use_se
+    #     params['net']['use_res'] = eval(args.use_res) if type(args.use_res) == str else args.use_res
+    # params['use_pi']['use_pi'] = args.use_pi
 
     if args.n_conv:
         params['net']['conv_num_layers'] = int(args.n_conv)
@@ -141,7 +140,7 @@ if __name__ == "__main__":
             ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'_conv{n_conv}fc{n_fc}'
 
     if args.net == 'CNN_SE':
-        depth = args.depth
+        depth = params['net']['depth']
         n_mixer = params['net']['mixer_num_layers']
         n_fc = params['net']['fc_num_layers']
         if args.use_mixer:
@@ -149,8 +148,12 @@ if __name__ == "__main__":
         else:
             ts = time.strftime('%Y-%m-%d_%H_%M', time.localtime()) + f'fc{n_fc}_layer{depth}'  
 
-    if args.net == 'Res_SE':
-        depth = args.depth
+    if args.net == 'MLPMixer' or args.net == 'Res_SE':
+        params['net']['use_se'] = eval(args.use_se) if type(args.use_se) == str else args.use_se
+        params['net']['use_res'] = eval(args.use_res) if type(args.use_res) == str else args.use_res
+        params['net']['use_pi'] = args.use_pi
+        params['strategy']['use_pi'] = args.use_pi
+        depth = params['net']['depth']
         n_mixer = params['net']['mixer_num_layers']
         n_fc = params['net']['fc_num_layers']
         if args.use_mixer:
@@ -219,6 +222,10 @@ if __name__ == "__main__":
         net = CNN(957, 8)   
     elif net_ == 'ResNet':
         from models.ResNet import resnet
+        net = resnet(**params['net'])
+
+    elif net_ == 'MLPMixer':
+        from models.MLPMixer import resnet
         net = resnet(**params['net'])
 
     elif net_ == 'Res_SE':
@@ -305,7 +312,7 @@ if __name__ == "__main__":
             print(test_model_path)
             net = load_net_state(net, torch.load(test_model_path,
                                                 map_location={'cuda:0': device, 'cuda:1': device}))
-            test_model(net, device=device, ds=args.ds)
+            test_model(net, device=device, ds=args.ds, **params['strategy'])
 
     except Exception as e:
         import traceback

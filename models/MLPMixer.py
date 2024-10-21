@@ -43,25 +43,6 @@ class MLPMixer1D(nn.Module):
 
         self.token_norm = nn.LayerNorm(token_dims)
         self.channel_norm = nn.LayerNorm(num_tokens)
-
-    # def forward(self, x):
-    #     x = self.channel_linear(x)
-    #     for i in range(self.num_layers):
-    #         x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
-    #         id1 = x
-    #         x = self.token_norm(x)
-    #         x = self.token_mixers[i](x)
-    #         x += id1
-            
-    #         x = self.token_norm(x)
-    #         x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
-    #         id2 = x
-    #         x = self.channel_mixers[i](x)
-    #         x += id2 # b, token_dim, num_tokens == b, channels, length
-        
-    #     x = self.channel_norm(x)
-    #     x = x.mean(-1) # b, channels, length → b, channels
-    #     return x
         
     def forward(self, x):
         x = self.channel_linear(x)
@@ -161,9 +142,9 @@ class ResNet(nn.Module):
                     nn.Dropout(p=0.2)
                 )
         
-        self.conv1 = nn.Conv1d(1, self.in_channels, kernel_size=5, stride=1,
-                               padding=2, bias=False)
-        self.bn1 = nn.BatchNorm1d(self.in_channels)
+        # self.conv1 = nn.Conv1d(1, self.in_channels, kernel_size=5, stride=1,
+        #                        padding=2, bias=False)
+        # self.bn1 = nn.BatchNorm1d(self.in_channels)
 
         # Flexible number of residual encoding layers
         layers = []
@@ -207,7 +188,6 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def encode(self, x):
-        # x = F.relu(self.bn1(self.conv1(x)))
         x = F.adaptive_avg_pool1d(x, 256)
         x = self.spec_emb(x)
         x = self.encoder(x)
@@ -252,18 +232,7 @@ class ResNet(nn.Module):
                 nn.init.normal_(m.weight, 0, 0.01)
                 nn.init.constant_(m.bias, 0)
 
-# CNN parameters
-# layers = 6
-# hidden_size = 100
-# block_size = 2
-# hidden_sizes = [hidden_size] * layers
-# num_blocks = [block_size] * layers
-# input_dim = 1024
-# in_channels = 64
-# n_classes = 30
-
-
-def resnet(depth=6, hidden_size=256, block_size=1,  input_dim=1024,
+def resnet(depth=6, hidden_size=1024, block_size=1,  input_dim=1024,
                  in_channels=256, **kwargs):
     hidden_sizes = [hidden_size] * depth
     num_blocks = [block_size] * depth
@@ -307,53 +276,54 @@ if __name__ == "__main__":
     from thop import profile
     p = []
     t = []
-    for d in [0, 4,
-# 6,
-8,
-# 10,
-12,
-# 14,
-16,
-20,
-24,
-28]:
-        sum_p=0
-        sum_t = 0
-        for se, res in [[1,1],[0,0],[1,0],[0,1]]:
-            params = {'conv_ksize':3, 
-                    'conv_padding':1, 
-                    'conv_init_dim':32, 
-                    'conv_final_dim':256, 
-                    'conv_num_layers':4, 
-                    'mp_ksize':2, 
-                    'mp_stride':2, 
-                    'fc_dim':1024, 
-                    'fc_num_layers':0, 
-                    'mixer_num_layers':1,
-                    'n_classes':957,
-                    'use_mixer':1,
-                    'use_se': se,
-                    'use_res':res,
-                    'depth': d,
-                    }
-            net = resnet(**params)
-            input = torch.randn(16, 1, 1024)
-            net(input)
-            # flops, params = profile(net, inputs=(input, ))
-            # sum_p+=params
-            # sum_t+=inf_time(net)/2
-        # p.append(sum_p/4/1000**2)
-        # t.append(sum_t/4)
-    # print('FLOPs = ' + str(flops/1000**3) + 'G')
-    # print('Params = ' + str(params/1000**2) + 'M')
-    # print(p, t)
-    # from torch.utils.tensorboard import SummaryWriter
-    # tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
-    # tb_writer.add_graph(net, (input)) 
+#     for d in [0, 4,
+# # 6,
+# 8,
+# # 10,
+# 12,
+# # 14,
+# 16,
+# 20,
+# 24,
+# 28]:
+    sum_p=0
+    sum_t = 0
+    for d in ([0,1,2,4,8]):
+    # for se, res in [[1,1],[0,0],[1,0],[0,1]]:
+        params = {'conv_ksize':3, 
+                'conv_padding':1, 
+                'conv_init_dim':32, 
+                'conv_final_dim':256, 
+                'conv_num_layers':4, 
+                'mp_ksize':2, 
+                'mp_stride':2, 
+                'fc_dim':1024, 
+                'fc_num_layers':0, 
+                'mixer_num_layers':1,
+                'n_classes':957,
+                'use_mixer':1,
+                'use_se': 1,
+                'use_res':1,
+                'depth': d,
+                }
+        net = resnet(**params)
+        input = torch.randn(16, 1, 1024)
+        # net(input)
+        # flops, params = profile(net, inputs=(input, ))
+        # sum_p+=params
+        sum_t = inf_time(net)/2
+    # p.append(sum_p/4/1000**2)
+        t.append(sum_t)
+# print('FLOPs = ' + str(flops/1000**3) + 'G')
+# print('Params = ' + str(params/1000**2) + 'M')
+    print(p, t)
+# from torch.utils.tensorboard import SummaryWriter
+# tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
+# tb_writer.add_graph(net, (input)) 
 
 # depth=6: 
-    # p = [2.111885, 2.929565, 3.747245, 4.564925, 5.382605, 6.200285] 
-    # t = [6.420711398124695, 8.202277421951294, 9.985934257507324, 11.784646272659302, 13.561979293823242, 15.324544191360474]
+# p = [2.111885, 2.929565, 3.747245, 4.564925, 5.382605, 6.200285] 
+# t = [6.420711398124695, 8.202277421951294, 9.985934257507324, 11.784646272659302, 13.561979293823242, 15.324544191360474]
 # depth=2:
-    # p = [4.259725, 8.028445, 11.797165, 15.565885, 19.334605, 23.103325]
-    # t = [3.6889456510543823, 5.504262566566467, 7.352142691612244, 9.188992738723755, 11.025322914123535, 12.91893720626831]
+# p = [4.259725, 8.028445, 11.797165, 15.565885, 19.334605, 23.103325]
+# t = [3.6889456510543823, 5.504262566566467, 7.352142691612244, 9.188992738723755, 11.025322914123535, 12.91893720626831]
