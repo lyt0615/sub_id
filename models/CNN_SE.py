@@ -140,7 +140,6 @@ class Bottleneck(nn.Module):
         y = self.se_block(x) + self.res_conv(x) if self.use_res else self.se_block(x)
         return y
 
-
 class resunit(nn.Module):
     def __init__(self, data_channel=1, n_classes=957, a=32, depth=6, fc_num_layers=0, fc_dim=1024, use_mixer=False, use_res=False, use_se=False, mixer_num_layers=4, **kwargs):
         super(resunit, self).__init__()
@@ -215,35 +214,60 @@ class resunit(nn.Module):
                 block_list.append(block(plane,plane,use_res, use_se))
         return nn.Sequential(*block_list)
 
+def inf_time(model):
+    iterations = 300
+    device = torch.device("cuda:0")
+    model.to(device)
+
+    random_input = torch.randn(1, 1, 1024).to(device)
+    starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+
+    # Preheat GPU
+    for _ in range(50):
+        _ = model(random_input)
+
+    # Measure inference time
+    times = torch.zeros(iterations)     # Save the time of each iteration
+    with torch.no_grad():
+        for iter in range(iterations):
+            starter.record()
+            _ = model(random_input)
+            ender.record()
+            # Synchronize GPU time
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender) # Calculate time
+            times[iter] = curr_time
+
 if __name__ == '__main__':
     from thop import profile
     from torch.utils.tensorboard import SummaryWriter
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    p=[]
-    # for l in range(1,6):
-    #     for f in range(1,6):
-    params = {'conv_ksize':3, 
-            'conv_padding':1, 
-            'conv_init_dim':32, 
-            'conv_final_dim':256, 
-            'conv_num_layers':4, 
-            'mp_ksize':2, 
-            'mp_stride':2, 
-            'fc_dim':1024, 
-            'fc_num_layers':0, 
-            'mixer_num_layers':10,
-            'n_classes':957,
-            'use_mixer':0,
-            'depth': 20,
-            'use_se': 1,
-            'use_res': 1,
-            }
-    model = resunit(**params).to(device)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
-    input = torch.randn(64,1,1024).to(device)
-    tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_SE/net')
-    tb_writer.add_graph(model, (input))
-    flops, params = profile(model, inputs=(input, ))
-    # model(input)
-    print(model)
-    print(params/1e6)
-    # print(p)
+    p = []
+    t = []
+    for l in range(1,8):
+        sum_p=0
+        sum_t = 0
+        params = {'conv_ksize':3, 
+                'conv_padding':1, 
+                'conv_init_dim':32, 
+                'conv_final_dim':256, 
+                'conv_num_layers':4, 
+                'mp_ksize':2, 
+                'mp_stride':2, 
+                'fc_dim':1024, 
+                'fc_num_layers':0, 
+                'mixer_num_layers':l,
+                'n_classes':957,
+                'use_mixer':1,
+                'depth': 6,
+                'use_se': 0,
+                'use_res': 0,
+                }
+        model = resunit(**params)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
+        input = torch.randn(1,1,1024)
+        # tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_SE/net')
+        # tb_writer.add_graph(model, (input))
+        flops, params = profile(model, inputs=(input, ))
+        p.append(params/1000**2)
+        # t.append(inf_time(model))
+    print(p,t)

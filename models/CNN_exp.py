@@ -46,45 +46,45 @@ class MLPMixer1D(nn.Module):
         self.token_norm = nn.LayerNorm(token_dims)
         self.channel_norm = nn.LayerNorm(num_tokens)
 
-    def forward(self, x):
-        x = self.channel_linear(x)
-        for i in range(self.num_layers):
-            id1 = x
-            x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
-            x = self.token_norm(x)
-            x = x.permute(0, 2, 1)
-            x = self.channel_mixers[i](x)
-            x += id1
-            
-            x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
-            id2 = x
-            x = self.token_norm(x)
-            x = self.token_mixers[i](x)
-            x += id2
-            x = x.permute(0, 2, 1)
-        x = x.permute(0, 2, 1)
-        x = self.token_norm(x)
-        x = x.mean(-2)
-        return x
-        
     # def forward(self, x):
     #     x = self.channel_linear(x)
     #     for i in range(self.num_layers):
-    #         x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
     #         id1 = x
+    #         x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
     #         x = self.token_norm(x)
-    #         x = self.token_mixers[i](x)
+    #         x = x.permute(0, 2, 1)
+    #         x = self.channel_mixers[i](x)
     #         x += id1
             
-    #         x = self.token_norm(x)
     #         x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
     #         id2 = x
-    #         x = self.channel_mixers[i](x)
-    #         x += id2 # b, token_dim, num_tokens == b, channels, length
-        
-    #     x = self.channel_norm(x)
-    #     x = x.mean(-1) # b, channels, length → b, channels
+    #         x = self.token_norm(x)
+    #         x = self.token_mixers[i](x)
+    #         x += id2
+    #         x = x.permute(0, 2, 1)
+    #     x = x.permute(0, 2, 1)
+    #     x = self.token_norm(x)
+    #     x = x.mean(-2)
     #     return x
+        
+    def forward(self, x):
+        x = self.channel_linear(x)
+        for i in range(self.num_layers):
+            x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
+            id1 = x
+            x = self.token_norm(x)
+            x = self.token_mixers[i](x)
+            x += id1
+            
+            x = self.token_norm(x)
+            x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
+            id2 = x
+            x = self.channel_mixers[i](x)
+            x += id2 # b, token_dim, num_tokens == b, channels, length
+        
+        x = self.channel_norm(x)
+        x = x.mean(-1) # b, channels, length → b, channels
+        return x
 
 
 
@@ -232,12 +232,10 @@ class CNN_exp(nn.Module):
 
         x = self.head(x)
         return x
-
-
-
-
+    
 if __name__ == '__main__':
     from thop import profile
+    from inf_time import inf_time
     import numpy as np
     from torch.utils.tensorboard import SummaryWriter
     # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -245,7 +243,8 @@ if __name__ == '__main__':
     torch.manual_seed(1)
     input = torch.randn(1, 1, 1024).to(device)
     p= []
-    for f in range(2,3):
+    t = []
+    for f in range(1, 8):
         # for f in range(1, 8):
             params = {'conv_ksize':3, 
                     'conv_padding':1, 
@@ -260,15 +259,14 @@ if __name__ == '__main__':
                 'n_classes':957,
                 'use_mixer':1,
                 }
-            net = CNN_exp(**params).to(device)
+            net = CNN_exp(**params)
             tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/CNN_exp/net')
             tb_writer.add_graph(net, (input))
             # print(net)
-            out = net(input)
-            print(net)
 
             flops, params = profile(net, inputs=(input, ))
             p.append(params/1e6)
-    print(p)
+            t.append(inf_time(net))
+    print(p, t)
         # print(f'FLOPs = {flops/1e9 :.4f} G')
         # print(f'Params = {params/1e6 :.4f} M')

@@ -87,10 +87,13 @@ def PACE(n_classes=30, **kwargs):
 
 if __name__ == "__main__":
     import time
+    from torch.utils.tensorboard import SummaryWriter
     net = PACE(n_classes=30, dim=1024, depth=4, kernel_size=9, patch_size=16, pool_dim=256, overlapped=False)
-    inp = torch.randn((1000, 1, 1024))
-    start = time.time()
-    print(net(inp).shape)
-    end = time.time()
-    print(end-start)
+    inp = torch.randn((1, 1, 1024))
+    tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/PACE/net')
+    tb_writer.add_graph(net, (inp))
+    # start = time.time()
+    # print(net(inp).shape)
+    # end = time.time()
+    # print(end-start)
 

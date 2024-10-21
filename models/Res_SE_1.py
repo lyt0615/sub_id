@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from einops.layers.torch import Reduce
 
 class MLPMixer1D(nn.Module):
     def __init__(self, 
@@ -85,7 +84,9 @@ class MLPMixer1D(nn.Module):
             x = self.token_mixers[i](x)
             x += id2
             x = x.permute(0, 2, 1)
-        x = self.token_norm(x.permute(0, 2, 1)).permute(0, 2, 1)
+        x = x.permute(0, 2, 1)
+        x = self.token_norm(x)
+        x = x.mean(-2)
         return x
 
 class Conv(nn.Module):
@@ -149,28 +150,22 @@ class ResidualBlock(nn.Module):
         out = F.relu(out)
         return out
 
-class PI_Model(nn.Module):
-    def __init__(self, base_model, classifier, **kwargs):
-        super(PI_Model, self).__init__()
-        
 class ResNet(nn.Module):
     def __init__(self, hidden_sizes, num_blocks, input_dim, in_channels, n_classes=957, fc_num_layers=0, 
-                 fc_dim=1024, use_mixer=0, mixer_num_layers=0, use_se=1, use_res=1, use_pi=0, **kwargs):
+                 fc_dim=1024, use_mixer=0, mixer_num_layers=0, use_se=1, use_res=1, **kwargs):
         super(ResNet, self).__init__()
         self.input_dim = input_dim
         self.in_channels = in_channels
         self.n_classes = n_classes
         self.use_mixer = use_mixer
-        self.use_pi = use_pi
 
-        self.initconv = nn.Sequential(nn.Conv1d(1, self.in_channels, kernel_size=5, stride=1,
-                               padding=2, bias=False),
-                               nn.BatchNorm1d(self.in_channels),
-                               nn.ReLU())
+        self.conv1 = nn.Conv1d(1, self.in_channels, kernel_size=5, stride=1,
+                               padding=2, bias=False)
+        self.bn1 = nn.BatchNorm1d(self.in_channels)
 
         # Flexible number of residual encoding layers
         layers = []
-        strides = [1] + [2] * (len(hidden_sizes) - 1)
+        strides = [1] + [1] * (len(hidden_sizes) - 1)
         for idx, hidden_size in enumerate(hidden_sizes):
             layers.append(self._make_layer(hidden_size, num_blocks[idx],
                                            stride=strides[idx], use_se=use_se, use_res=use_res))
@@ -190,23 +185,13 @@ class ResNet(nn.Module):
                                        expansion_factor=[768/token_dims, 768/num_tokens],
                                        dropout=0.0)
 
-            self.head = nn.Sequential(*[Reduce('b c n -> b c', 'mean'), nn.Linear(token_dims, n_classes)])
+            self.head = nn.Linear(token_dims, n_classes)
         elif fc_num_layers:
             self.fc = self._create_mlp_block(fc_init_dim=num_tokens*token_dims, fc_dim=fc_dim, fc_num_layers=fc_num_layers)
             self.fc_head = nn.Linear(fc_dim, n_classes)
 
         else:
             self.linear = nn.Linear(num_tokens*token_dims, self.n_classes)
-        
-        if self.use_pi:
-            # mlpmixer = self.mlpmixer
-            try:
-                from models.pi_workflow import LoadModel
-            except: from pi_workflow import LoadModel
-            if self.use_mixer:
-                base_model = nn.Sequential(self.initconv, self.encoder, self.mlpmixer)
-            classifier = self.head
-            self.pi_model = LoadModel(base_model, token_dims, classifier)
 
         self._initialize_weights()
         
@@ -220,23 +205,20 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def encode(self, x):
-        x = self.initconv(x)
+        x = F.relu(self.bn1(self.conv1(x)))
         x = self.encoder(x)
         return x
 
-    def forward(self, x, target=None):
-        if self.use_pi:
-            z = self.pi_model(x, target)
-        else:
-            z = self.encode(x)
-            if self.use_mixer:
-                z = self.head(self.mlpmixer(z))
-            elif self.fc_num_layers:
-                z = z.view(z.size(0), -1)
-                z = self.fc_head(self.fc(z))
-            else: 
-                z = z.view(z.size(0), -1)
-                z = self.linear(z)
+    def forward(self, x):
+        z = self.encode(x)
+        if self.use_mixer:
+            z = self.head(self.mlpmixer(z))
+        elif self.fc_num_layers:
+            z = z.view(z.size(0), -1)
+            z = self.fc_head(self.fc(z))
+        else: 
+            z = z.view(z.size(0), -1)
+            z = self.linear(z)
         return z
 
     def _make_layer(self, out_channels, num_blocks, stride=1, use_se=1, use_res=1):
@@ -277,8 +259,8 @@ class ResNet(nn.Module):
 # n_classes = 30
 
 
-def resnet(depth=6, hidden_size=100, block_size=2,  input_dim=1024,
-                 in_channels=64, **kwargs):
+def resnet(depth=6, hidden_size=256, block_size=1,  input_dim=1024,
+                 in_channels=1, **kwargs):
     hidden_sizes = [hidden_size] * depth
     num_blocks = [block_size] * depth
     input_dim = input_dim
@@ -318,58 +300,51 @@ def inf_time(model):
 
 if __name__ == "__main__":
     import time
+#     p = []
+#     t = []
+#     for d in [4,
+# # 6,
+# 8,
+# # 10,
+# 12,
+# # 14,
+# 16,
+# 20,
+# 24,
+# 28]:
+        # sum_p=0
+        # sum_t = 0
+        # for se, res in [[1,1],[0,0],[1,0],[0,1]]:
+    params = {'conv_ksize':3, 
+            'conv_padding':1, 
+            'conv_init_dim':32, 
+            'conv_final_dim':256, 
+            'conv_num_layers':4, 
+            'mp_ksize':2, 
+            'mp_stride':2, 
+            'fc_dim':1024, 
+            'fc_num_layers':0, 
+            'mixer_num_layers':1,
+            'n_classes':957,
+            'use_mixer':1,
+            'use_se': 1,
+            'use_res':1,
+            'depth': 2,
+            }
+    net = resnet(**params)
     input = torch.randn(16, 1, 1024)
-    target = F.one_hot(torch.randint(0, 957, (16,)), num_classes=957)
-    p = []
-    t = []
-    for d in [4,
-# 6,
-8,
-# 10,
-12,
-# 14,
-16,
-20,
-24]:
-        sum_p=0
-        sum_t = 0
-        for se, res in [[1,1],[0,0],[1,0],[0,1]]:
-            params = {'conv_ksize':3, 
-                    'conv_padding':1, 
-                    'conv_init_dim':32, 
-                    'conv_final_dim':256, 
-                    'conv_num_layers':4, 
-                    'mp_ksize':2, 
-                    'mp_stride':2, 
-                    'fc_dim':1024, 
-                    'fc_num_layers':0, 
-                    'mixer_num_layers':d,
-                    'n_classes':957,
-                    'use_mixer':1,
-                    'use_se': 0,
-                    'use_res':0,
-                    'depth': 2,
-                    'use_pi': 1
-                    }
-            net = resnet(**params)
-            output = net(input, target)
-            # print(net)
-            # start = time.time()
-            # end = time.time()
-            # print(f'Inference time: {(end-start)/16*1000}ms')
-            from thop import profile
-            flops, params = profile(net, inputs=(input, target))
-            sum_p+=params
-            # print(output)
-            # sum_t+=inf_time(net)
-        # p.append(sum_p/4/1000**2)
-        # t.append(sum_t/4)
+    from thop import profile
+    flops, params = profile(net, inputs=(input, ))
+    # sum_p+=params
+    # sum_t+=inf_time(net)
+    # p.append(sum_p/4/1000**2)
+    # t.append(sum_t/4)
     # print('FLOPs = ' + str(flops/1000**3) + 'G')
     # print('Params = ' + str(params/1000**2) + 'M')
     # print(p, t)
-    # from torch.utils.tensorboard import SummaryWriter
-    # tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
-    # tb_writer.add_graph(net, (input)) 
+    from torch.utils.tensorboard import SummaryWriter
+    tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
+    tb_writer.add_graph(net, (input)) 
 
 # depth=6: 
     # p = [2.111885, 2.929565, 3.747245, 4.564925, 5.382605, 6.200285] 
