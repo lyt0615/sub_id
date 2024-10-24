@@ -288,9 +288,9 @@ if __name__ == "__main__":
 # 28]:
     # sum_p=0
     # sum_t = 0
-    for d in ([0,1,2,4,6,8]):
+    for d in ([6]):
     # for se, res in [[1,1],[0,0],[1,0],[0,1]]:
-        for m in [8,12,16,20]:
+        for m in [20]:
             params = {'conv_ksize':3, 
                     'conv_padding':1, 
                     'conv_init_dim':32, 
@@ -322,7 +322,7 @@ if __name__ == "__main__":
 
 
 
-    
+
 # from torch.utils.tensorboard import SummaryWriter
 # tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
 # tb_writer.add_graph(net, (input)) 

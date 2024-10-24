@@ -294,7 +294,7 @@ if __name__ == "__main__":
     try:
 
         if args.train or args.debug:
-            train_model(net, save_path, ds=args.ds, device=device)
+            train_model(net, save_path, ds=args.ds, device=device, **params['strategy'])
 
         elif args.tune:
             import torch
@@ -303,7 +303,7 @@ if __name__ == "__main__":
             print(base_model_path)
             net = load_net_state(net, torch.load(f'{base_model_path}.pth'))
             train_model(net, save_path=f"{base_model_path}/tune", ds=args.ds, device=device,
-                        tune=True)
+                        tune=True, **params['strategy'])
 
         elif args.test:
             import torch
