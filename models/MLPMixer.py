@@ -243,9 +243,9 @@ def resnet(depth=6, hidden_size=1024, block_size=1,  input_dim=1024,
                   in_channels=in_channels, **kwargs)
 
 
-def inf_time(model):
+def inf_time(model, device='cpu'):
     iterations = 300
-    device = torch.device("cuda:0")
+    device = torch.device(device)
     model.to(device)
 
     random_input = torch.randn(2, 1, 1024).to(device)
@@ -286,37 +286,43 @@ if __name__ == "__main__":
 # 20,
 # 24,
 # 28]:
-    sum_p=0
-    sum_t = 0
-    for d in ([0,1,2,4,8]):
+    # sum_p=0
+    # sum_t = 0
+    for d in ([0,1,2,4,6,8]):
     # for se, res in [[1,1],[0,0],[1,0],[0,1]]:
-        params = {'conv_ksize':3, 
-                'conv_padding':1, 
-                'conv_init_dim':32, 
-                'conv_final_dim':256, 
-                'conv_num_layers':4, 
-                'mp_ksize':2, 
-                'mp_stride':2, 
-                'fc_dim':1024, 
-                'fc_num_layers':0, 
-                'mixer_num_layers':1,
-                'n_classes':957,
-                'use_mixer':1,
-                'use_se': 1,
-                'use_res':1,
-                'depth': d,
-                }
-        net = resnet(**params)
-        input = torch.randn(16, 1, 1024)
-        # net(input)
-        # flops, params = profile(net, inputs=(input, ))
-        # sum_p+=params
-        sum_t = inf_time(net)/2
-    # p.append(sum_p/4/1000**2)
-        t.append(sum_t)
+        for m in [8,12,16,20]:
+            params = {'conv_ksize':3, 
+                    'conv_padding':1, 
+                    'conv_init_dim':32, 
+                    'conv_final_dim':256, 
+                    'conv_num_layers':4, 
+                    'mp_ksize':2, 
+                    'mp_stride':2, 
+                    'fc_dim':1024, 
+                    'fc_num_layers':0, 
+                    'mixer_num_layers':m,
+                    'n_classes':957,
+                    'use_mixer':1,
+                    'use_se': 1,
+                    'use_res':1,
+                    'depth': d,
+                    }
+            net = resnet(**params)
+            input = torch.randn(16, 1, 1024)
+            net(input)
+            flops, params = profile(net, inputs=(input, ))
+            # sum_p+=params
+            # sum_t = inf_time(net, 'cuda:3')/2
+        p.append(params/1000**2)
+            # t.append(sum_t)
 # print('FLOPs = ' + str(flops/1000**3) + 'G')
 # print('Params = ' + str(params/1000**2) + 'M')
     print(p, t)
+
+
+
+
+    
 # from torch.utils.tensorboard import SummaryWriter
 # tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
 # tb_writer.add_graph(net, (input)) 

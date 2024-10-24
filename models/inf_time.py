@@ -22,3 +22,5 @@ def inf_time(model):
             torch.cuda.synchronize()
             curr_time = starter.elapsed_time(ender) # Calculate time
             times[iter] = curr_time
+    mean_time = times.mean().item()/len(random_input)
+    return mean_time
