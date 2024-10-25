@@ -1,68 +1,8 @@
 
 import torch.nn as nn
 import torch
-
 import torch.nn.functional as F
-
-
-class MLPMixer1D(nn.Module):
-    def __init__(self, 
-                 num_tokens, 
-                 token_dims, 
-                 num_layers, 
-                 hidden_dims=1024,
-                 dropout=0.0,
-                 ):
-        super().__init__()
-
-        self.num_layers = num_layers
-        self.channel_linear = nn.Conv1d(token_dims, token_dims, kernel_size=1)
-        self.token_mixers = nn.ModuleList() 
-        self.channel_mixers = nn.ModuleList() 
-
-        for _ in range(num_layers):
-            token_mixer = nn.Sequential(
-                # nn.LayerNorm(token_dims),
-                nn.Linear(token_dims, hidden_dims), 
-                nn.GELU(), 
-                nn.Dropout(dropout), 
-                nn.Linear(hidden_dims, token_dims), 
-                nn.Dropout(dropout)
-                )
-            
-            channel_mixer = nn.Sequential(
-                # nn.LayerNorm(num_tokens),
-                nn.Linear(num_tokens, hidden_dims), 
-                nn.GELU(), 
-                nn.Dropout(dropout), 
-                nn.Linear(hidden_dims, num_tokens), 
-                nn.Dropout(dropout)
-                )
-            
-            self.token_mixers.append(token_mixer)
-            self.channel_mixers.append(channel_mixer)
-
-        self.token_norm = nn.LayerNorm(token_dims)
-        self.channel_norm = nn.LayerNorm(num_tokens)
-
-    def forward(self, x):
-        x = self.channel_linear(x)
-        for i in range(self.num_layers):
-            x = x.permute(0, 2, 1)  # b, channels (token_dims), length (num_tokens) → b, num_token, token_dims
-            id1 = x
-            x = self.token_norm(x)
-            x = self.token_mixers[i](x)
-            x += id1
-            
-            x = self.token_norm(x)
-            x = x.permute(0, 2, 1) # b, num_token, token_dims → b, token_dim, num_tokens
-            id2 = x
-            x = self.channel_mixers[i](x)
-            x += id2 # b, token_dim, num_tokens == b, channels, length
-        
-        x = self.channel_norm(x)
-        x = x.mean(-1) # b, channels, length → b, channels
-        return x
+from MLPMixer import MLPMixer1D
     
 class Conv(nn.Module):
     default_act = nn.LeakyReLU()
@@ -127,7 +67,6 @@ class Bottleneck(nn.Module):
         y = self.cv1(x) + self.cv(x)
         return y
 
-
 class resunit(nn.Module):
     def __init__(self, data_channel=1, n_classes=957, a=20, layer=6, fc_num_layers=0, fc_dim=1024, use_mixer=False, mixer_num_layers=4, **kwargs):
         super(resunit, self).__init__()
@@ -156,7 +95,7 @@ class resunit(nn.Module):
             self.mlpmixer = MLPMixer1D(num_tokens=num_tokens,
                                        token_dims=token_dims,
                                        num_layers=mixer_num_layers,
-                                       hidden_dims=768,
+                                       expansion_factor=[768/token_dims, 768/num_tokens],
                                        dropout=0.0).to(self.device)
 
             self.head = nn.Linear(token_dims, n_classes)           
@@ -204,6 +143,8 @@ class resunit(nn.Module):
 
 if __name__ == '__main__':
     from thop import profile
+    from torchinfo import summary
+    from time import time
     params = {'conv_ksize':3, 
               'conv_padding':1, 
               'conv_init_dim':32, 
@@ -215,11 +156,18 @@ if __name__ == '__main__':
               'fc_num_layers':2, 
               'mixer_num_layers':1,
               'n_classes':957,
-              'use_mixer':0,
+              'use_mixer':1,
               }
-    model = resunit(**params)  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
-    input = torch.randn(64,1,1024)
-    flops, params = profile(model, inputs=(input, ))
+    inp = torch.randn(1,1,1024)
+    model = resunit(**params).cpu()  #(通道数，多标签标签个数，卷积宽度倍数，残差块数）
+    # summary(model, inp.shape)
+    # start = time()
+    # model(inp)
+    # print(f'Inference time: {time()-start}.')
+    start = time()
+    model(inp)
+    end = time()
+    print(end-start)    
+    # flops, params = profile(model, inputs=(inp, ))
     # model(input)
-    print(model)
-    print(params/1e6)
+    # print(params/1e6)
