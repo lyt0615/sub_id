@@ -201,12 +201,12 @@ class ResNet(nn.Module):
         if self.use_pi:
             # mlpmixer = self.mlpmixer
             try:
-                from models.pi_workflow import LoadModel
-            except: from pi_workflow import LoadModel
+                from models.pi_workflow import PIModel
+            except: from pi_workflow import PIModel
             if self.use_mixer:
                 base_model = nn.Sequential(self.initconv, self.encoder, self.mlpmixer)
             classifier = self.head
-            self.pi_model = LoadModel(base_model, token_dims, classifier)
+            self.pi_model = PIModel(base_model, token_dims, classifier)
 
         self._initialize_weights()
         
@@ -357,9 +357,9 @@ if __name__ == "__main__":
             # start = time.time()
             # end = time.time()
             # print(f'Inference time: {(end-start)/16*1000}ms')
-            from thop import profile
-            flops, params = profile(net, inputs=(input, target))
-            sum_p+=params
+            # from thop import profile
+            # flops, params = profile(net, inputs=(input, target))
+            # sum_p+=params
             # print(output)
             # sum_t+=inf_time(net)
         # p.append(sum_p/4/1000**2)
@@ -367,9 +367,9 @@ if __name__ == "__main__":
     # print('FLOPs = ' + str(flops/1000**3) + 'G')
     # print('Params = ' + str(params/1000**2) + 'M')
     # print(p, t)
-    # from torch.utils.tensorboard import SummaryWriter
-    # tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
-    # tb_writer.add_graph(net, (input)) 
+    from torch.utils.tensorboard import SummaryWriter
+    tb_writer = SummaryWriter(log_dir = 'checkpoints/qm9s_raman/Res_SE/net')
+    tb_writer.add_graph(net, (input)) 
 
 # depth=6: 
     # p = [2.111885, 2.929565, 3.747245, 4.564925, 5.382605, 6.200285] 
