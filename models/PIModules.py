@@ -2,17 +2,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models.Res_SE import ResNet
 class ClassSpecificLoss(nn.Module):
-    def __init__(self, criterion, lambda_weight=0.5):
+    def __init__(self, criterion, lambda_weight=1):
         super(ClassSpecificLoss, self).__init__()
         self.lambda_weight = lambda_weight
         self.criterion = criterion
 
     def forward(self, inputs, targets):
-        pred_1 = inputs['pred_1']
-        pred_2 = inputs['pred_2']
-        pred_3 = inputs['pred_3']
+        pred_1 = torch.sigmoid(inputs['pred_1'])
+        pred_2 = torch.sigmoid(inputs['pred_2'])
+        pred_3 = torch.sigmoid(inputs['pred_3'])
         ind_positive_sample = inputs['ind_positive_sample']
         n_positive_sample = int(torch.sum(ind_positive_sample))
         # with torch.no_grad():
@@ -24,14 +23,14 @@ class ClassSpecificLoss(nn.Module):
             loss_interpretation = self.criterion(pred_2[ind_positive_sample], targets[ind_positive_sample])
         else:
             loss_interpretation = torch.tensor(0.0).cuda()
-        loss_total = loss_discrimination + loss_interpretation * self.lambda_weight
+        loss_total = loss_discrimination + loss_interpretation * self.lambda_weight if self.lambda_weight is not None else loss_discrimination
         return {"loss_discrimination": loss_discrimination, "loss_interpretation": loss_interpretation, "loss_total": loss_total,
                 "n_positive_sample": n_positive_sample, 
                 # 'ACC1': ACC1, 'ACC2': ACC2,'ACC3': ACC3
                 }
     
 class PIModel(nn.Module):
-    def __init__(self, base_model, in_channels, classifier):
+    def __init__(self, base_model, in_channels, n_classes, classifier, pi_weight):
         super(PIModel, self).__init__()
         # self.n_classes = num_classes
         # self.fc_input_dim = fc_input_dim
@@ -40,11 +39,15 @@ class PIModel(nn.Module):
         base_model.append(new_conv_layer)
         # modules[-1] = nn.Sequential(nn.Flatten(),
         #                             nn.Linear(in_features=self.fc_input_dim, out_features=self.n_classes))
+        self.pi_weight = pi_weight
         self.backbone = nn.Sequential(*base_model)
         self.classifier = classifier
-
+        self.use_pi = True if self.pi_weight is not None else False
+        # correlation = torch.rand(size=(n_classes, in_channels))
+        # correlation = torch.stack([F.sigmoid(correlation[:,c]) for c in range(correlation.shape[1])], dim=1)
+        # self.correlation = nn.Parameter(correlation)
         # Correlation matrix for multi-label (still used but for independent labels)
-        # self.correlation = nn.Parameter(F.softmax(torch.rand(size=(self.n_classes, self.n_filters)), dim=0))
+        self.correlation = nn.Parameter(F.softmax(torch.rand(size=(n_classes, in_channels)), dim=0))
 
     def multinomial(self, pred, target):
         sample_cat_oh = torch.zeros(pred.shape)
@@ -56,7 +59,8 @@ class PIModel(nn.Module):
     def calc_pi_acc(self, pred, target, features):
         device = next(self.parameters()).device
         pred_1 = pred  # prediction of discrimination pathway (using all filters)
-
+        pred = torch.sigmoid(pred)
+        correlation = self.correlation.to(device)
         # sample class ID using reparameter trick
         # pred_softmax = torch.softmax(pred, dim=-1) 
         # with torch.no_grad():
@@ -87,7 +91,6 @@ class PIModel(nn.Module):
         #             'ind_positive_sample': ind_positive_sample}
         # return out
 
-        correlation = nn.Parameter(F.softmax(torch.rand(size=(target.shape[-1], features.shape[1])), dim=0)).to(device)
         # sample class ID using reparameter trick (adjusted for multi-label)
         with torch.no_grad():
             sample_cat = torch.bernoulli(pred).to(device)  # Sampling binary labels for multi-label case
@@ -100,7 +103,11 @@ class PIModel(nn.Module):
 
         # sample filter using reparameter trick (adjusted for multi-label)
         correlation_softmax = F.softmax(correlation, dim=0) # correlation
-        correlation_samples = sample_cat_oh @ correlation_softmax
+        if self.pi_weight:
+            correlation_samples = sample_cat_oh @ correlation_softmax 
+        elif self.use_pi:
+            correlation_samples = torch.rand(features.shape[0], features.shape[1]).to(device)
+        
         with torch.no_grad():
             ind_sample = torch.bernoulli(correlation_samples).bool()
             epsilon = torch.where(ind_sample, 1 - correlation_samples, -correlation_samples)    
@@ -110,17 +117,20 @@ class PIModel(nn.Module):
 
         # Prediction using class-specific filters
         # feature_mask = torch.randn(feature_mask.shape).to(device)
-        pred_2 = torch.sigmoid(self.classifier(feature_mask))  # Sigmoid for multi-label prediction
+        pred_2 = self.classifier(feature_mask)  # Sigmoid for multi-label prediction
 
         # Complementary filters sampling
         with torch.no_grad():
-            correlation_samples = correlation_softmax[target.int()]
+            if self.pi_weight:
+                correlation_samples = correlation_softmax[target.int()]  
+            elif self.use_pi: 
+                correlation_samples = torch.softmax(torch.randn(features.shape[0], target.shape[-1], features.shape[1]),0).to(device)
             binary_mask = torch.bernoulli(correlation_samples).bool()
             binary_mask_squeezed = torch.any(binary_mask, dim=1)
             # features = features.unsqueeze(1).repeat(1,self.n_classes,1,1,1)
             feature_mask_self = features * ~binary_mask_squeezed[..., None]
-        # feature_mask_self = torch.randn(feature_mask_self.shape).to(device)
-        pred_3 = torch.sigmoid(self.classifier(feature_mask_self))  # Sigmoid for multi-label prediction
+            # feature_mask_self = torch.randn(feature_mask_self.shape).to(device)
+        pred_3 = self.classifier(feature_mask_self) # Sigmoid for multi-label prediction
 
         # Output dictionary with the predictions and features
         return {"features": features, 'pred_1': pred_1, 'pred_2': pred_2, 'pred_3': pred_3,
@@ -129,8 +139,10 @@ class PIModel(nn.Module):
             
     def forward(self, inputs, target=None, forward_pass='default'):
         features = self.backbone(inputs)
-        pred = torch.sigmoid(self.classifier(features))  # Use sigmoid for multi-label classification
-        out = self.calc_pi_acc(pred, target, features) if target is not None else pred
+        pred = self.classifier(features)  # Use sigmoid for multi-label classification
+        if target is not None:
+            out = self.calc_pi_acc(pred, target, features)  
+        else: out = pred
         return out
     #     pred_1 = pred  # prediction of discrimination pathway (using all filters)
 
@@ -172,45 +184,6 @@ class PIModel(nn.Module):
     #            'ind_positive_sample': ind_positive_sample}
     #     return out
 
-def create_config(config_file, backbone=None, criterion=None):
-    import os
-    from datetime import datetime
-    import yaml
-    from easydict import EasyDict
-    with open(config_file, 'r') as stream:
-        config = yaml.safe_load(stream)
-    cfg = EasyDict()
-
-    with open(config_file, 'r') as stream:
-        config = yaml.safe_load(stream)
-    cfg = EasyDict()
-
-    # Copy
-    for k, v in config.items():
-        cfg[k] = v
-    if backbone:
-        cfg['backbone'] = backbone
-    if criterion:
-        cfg['criterion'] = criterion
-
-    # Set paths for pretext task (These directories are needed in every stage)
-    if not os.path.exists('./result'):
-        os.mkdir('./result')
-    dt = datetime.now().strftime('%m%d_%H%M')
-    base_dir = f'./result/{dt}_' + cfg['db_name'] + f"_{cfg['backbone']}"+ f"_{cfg['criterion']}"
-    if os.path.exists(base_dir):
-        for i in range(10):
-            base_dir = base_dir + f'_{i + 2}'
-            if os.path.exists(base_dir):
-                continue
-            break
-    os.mkdir(base_dir)
-
-    cfg['base_dir'] = base_dir
-    cfg['best_checkpoint'] = os.path.join(base_dir, 'best_checkpoint.pth.tar')
-    cfg['last_checkpoint'] = os.path.join(base_dir, 'last_checkpoint.pth.tar')
-    return cfg
-
 
 if __name__ == '__main__':
     import argparse
@@ -219,10 +192,7 @@ if __name__ == '__main__':
     cmd_opt.add_argument('-configFileName', default='./configs/cifar10.yml')
     cmd_opt.add_argument('-criterion', default='ClassSpecificLoss',help='StandardCE/ClassSpecificLoss')
     cmd_opt.add_argument('-backbone', default='resnet18',help='resnet18')
-    cmd_args, _ = cmd_opt.parse_known_args()
-    p = create_config(config_file=cmd_args.configFileName,
-                      backbone=cmd_args.backbone,
-                      criterion=cmd_args.criterion)   
+    cmd_args, _ = cmd_opt.parse_known_args() 
     input = torch.randn((128, 3, 224, 224)).cuda()
     # target = F.one_hot(torch.randint(0, 10, (128,)), num_classes=10).cuda()
     a=np.array([[0,1,0,1,0,0,0,0,0,0,], [1,0,0,0,0,0,0,0,1,0], [0,1,1,1,1,1,0,0,0,0,],[0,0,0,0,0,0,1,0,1,1,]])
@@ -230,5 +200,3 @@ if __name__ == '__main__':
     for i in range(32):
         target.append(a)
     target = torch.tensor(np.vstack(target)).cuda()
-    model = PIModel(p).cuda()
-    model(input, target)
