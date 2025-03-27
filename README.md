@@ -1,6 +1,6 @@
 # sub_id
 - High-performance and low-cost feature mixer for spectroscopy identification.
-  ![](1743066589803.png "MLPMixer")
+  ![](1743066497946.jpg "MLPMixer")
   
 - Interpretable training path for channel-class correlation.
   ![](1743066792705.png "Interpretable training path")
