@@ -7,7 +7,7 @@ Spectroscopy, especially vibrational spectroscopy i.e. IR and Raman, provide fin
     - Theoretical Raman dataset: [QM9S-Raman](https://figshare.com/articles/dataset/QM9S_dataset/24235333) ~130k spectrum, 957 ssubstructures.
     - Experimental IR dataset: [NIST-IR](https://webbook.nist.gov/chemistry/) ~8k spectrum, 17 substructures.
     ![](img/datasets.jpg "MLPMixer")
-2. Bacteria in [J. Donnie et al. Nat. Commun. 10, 4927 (2019](https://www.nature.com/articles/s41467-019-12898-9#additional-information) with 30,000 Raman spectrum for pre-training and 3,000 for finetuning.
+2. Bacteria in [J. Donnie et al. Nat. Commun. 10, 4927 (2019)](https://www.nature.com/articles/s41467-019-12898-9#additional-information) with 30,000 Raman spectrum for pre-training and 3,000 for finetuning.
 
 ## Methods
 1. PeakMxer
