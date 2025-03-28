@@ -24,7 +24,7 @@ Or adjusting command in ```train.sh```, run the following in terminal:
 2. IP Evaluation
    > Table 1 Infidelity and sensitivity of ResPeak + MLPMixer model with trainable/untrainable (correlation matrix is randomly initialized as constant).
    
-<img src="img/ip_eval.jpg" width="210px">
+<img src="img/ip_eval.jpg" width="600px">
    
   ![](img/ip_subs.jpg "MLPMixer")
    > Figure 2 Grad-CAM of ResPeak + MLPMixer model using: all channels (first column), class-specific channels (second column) and complementary channels (thrid column) to a molecule in NIST-IR dataset.
