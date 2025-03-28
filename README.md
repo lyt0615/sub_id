@@ -28,12 +28,12 @@ PeakMixer combines the Peak module and MLPMixer as a whole.
 `/home/ytliu/.conda/envs/multispec/bin/python main.py --train --net MLPMixer --depth 6 --use_mixer 1 --use_res 1 --use_se 1 --n_fc 0 --n_mixer 20 --device cuda:0
 `
 ## Result
-1. MLPMixer Evaluation
+### MLPMixer Evaluation
 <img src="img/mixer.jpg" width="1000px">
 
    > Figure 1 Performance of models with ResPeak (an inception + SE attention feature extractor) combining: no feature mixer (ResPeak), MLP (ResPeak + MLP) and MLPMixer (ResPeak+MLPMixer). by varying model size on datasets: (a) QM9S-Raman, (b) NIST-IR and (c) bacteria, as well as (d) the effect of adding ResPeak's width (channel number) and MLPMixer layer.
 
-2. IP Evaluation
+### IP Evaluation
    > Table 1 Infidelity and sensitivity of ResPeak + MLPMixer model with trainable/untrainable (correlation matrix is randomly initialized as constant).
    
 <img src="img/ip_eval.jpg" width="600px">
