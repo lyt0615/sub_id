@@ -29,5 +29,5 @@ Or adjusting command in ```train.sh```, run the following in terminal:
   ![](img/ip_subs.jpg "MLPMixer")
    > Figure 2 Grad-CAM of ResPeak + MLPMixer model using: all channels (first column), class-specific channels (second column) and complementary channels (thrid column) to a molecule in NIST-IR dataset.
 
-  ![](img/ip_bax.jpg "MLPMixer")
+  ![](img/ip_bac.jpg "MLPMixer")
    > Figure 3 Grad-CAM of ResPeak + MLPMixer model using: all channels (first column), class-specific channels (second column) and complementary channels (thrid column) to a molecule in bacteria dataset.
