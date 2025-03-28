@@ -12,12 +12,14 @@ Spectroscopy, especially vibrational spectroscopy i.e. IR and Raman, provide fin
 ## Methods
 1. PeakMxer
 PeakMixer combines the Peak module and MLPMixer as a whole.
-- MLPMixer
-  ![](img/mlpmixer.jpg "MLPMixer")
-- Peak modules for feature extraction: ResPeak for substructures (a), CNN-Peak (b) for bacteria.
-  ![](img/peak.jpg "MLPMixer")
-  
-- Interpretable training path for channel-class correlation.
+    - MLPMixer
+      
+      ![](img/mlpmixer.jpg "MLPMixer")
+    - Peak modules for feature extraction: ResPeak for substructures (a), CNN-Peak (b) for bacteria.
+      
+      ![](img/peak.jpg "MLPMixer")
+
+2. Interpretable path (IP) for channel-class correlation. Backbone refers to feature extractor + mixer.
   ![](img/ip.png "Interpretable training path")
   
 ## Run
