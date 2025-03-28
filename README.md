@@ -23,6 +23,7 @@ Or adjusting command in ```train.sh```, run the following in terminal:
 
 2. IP Evaluation
    > Table 1 Infidelity and sensitivity of ResPeak + MLPMixer model with trainable/untrainable (correlation matrix is randomly initialized as constant).
+   
 ![](img/ip_eval.jpg "MLPMixer")
    
   ![](img/ip_subs.jpg "MLPMixer")
