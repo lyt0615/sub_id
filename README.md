@@ -18,7 +18,7 @@ Or adjusting command in ```train.sh```, run the following in terminal:
 # Result
 
 1. MLPMixer Evaluation
-<img src="img/mixer.jpg" width="2500px">
+<img src="img/mixer.jpg" width="1800px">
       > Figure 1 Performance of models with ResPeak (an inception + SE attention feature extractor) combining: no feature mixer (ResPeak), MLP (ResPeak + MLP) and MLPMixer (ResPeak+MLPMixer). by varying model size on datasets: (a) QM9S-Raman, (b) NIST-IR and (c) bacteria, as well as (d) the effect of adding ResPeak's width (channel number) and MLPMixer layer.
 
 2. IP Evaluation
