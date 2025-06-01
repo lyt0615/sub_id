@@ -20,6 +20,7 @@ PeakMixer combines the Peak module and MLPMixer as a whole.
       ![](img/peak.jpg "MLPMixer")
 
 2. Interpretable deep learning's path (IP) for channel-class correlation. Backbone refers to feature extractor + mixer.
+  ![](img/ip_1.png "Feature map with channel-class correlation")
   ![](img/ip.png "Interpretable training path")
   
 ## Run
