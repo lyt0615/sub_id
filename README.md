@@ -39,7 +39,7 @@ PeakMixer combines the Peak module and MLPMixer as a whole.
    
 <img src="img/ip_eval.jpg" width="600px">
    
-  ![](img/ip_subs.jpg "MLPMixer")
+  ![](img/ip_subs.png "MLPMixer")
    > Figure 2 Grad-CAM of ResPeak + MLPMixer model using: all channels (first column), class-specific channels (second column) and complementary channels (thrid column) to a molecule in NIST-IR dataset.
 
   ![](img/ip_bac.png "MLPMixer")
